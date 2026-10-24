@@ -11,6 +11,8 @@ import { db } from './db'
 import { useOnline } from './lib/media'
 import { go, useRoute } from './lib/router'
 import { useSettings } from './lib/settings'
+import { syncLabel } from './components/SyncPanel'
+import { initSync, useSync } from './sync/manager'
 
 /** Đọc ?new=1 hoặc dữ liệu từ Web Share Target rồi dọn URL. */
 function takeLaunchParams(): { open: boolean; text?: string } {
@@ -27,6 +29,7 @@ export default function App() {
   const route = useRoute()
   const { theme, reviewAfterDays } = useSettings()
   const online = useOnline()
+  const sync = useSync()
   const [capture, setCapture] = useState<{ text?: string } | null>(LAUNCH.open ? { text: LAUNCH.text } : null)
   const [query, setQuery] = useState('')
   const [installEvent, setInstallEvent] = useState<InstallPromptEvent | null>(null)
@@ -57,6 +60,7 @@ export default function App() {
       setInstallEvent(e as InstallPromptEvent)
     }
     window.addEventListener('beforeinstallprompt', onPrompt)
+    initSync()
     // Xin trình duyệt giữ dữ liệu lâu dài (Chrome thường tự cho khi app đã cài)
     navigator.storage?.persist?.().catch(() => {})
     return () => window.removeEventListener('beforeinstallprompt', onPrompt)
@@ -111,6 +115,12 @@ export default function App() {
             <h1>{titles[route.name]}</h1>
           )}
           {!online && <span className="offline" title="Đang offline — mọi thứ vẫn được lưu trên máy">offline</span>}
+          {sync.email && online && (
+            <a href="#/settings" className={'sync-chip ' + sync.status} title={syncLabel(sync)} aria-label={syncLabel(sync)}>
+              <span>{sync.status === 'syncing' ? '⟳' : sync.status === 'error' ? '⚠' : '☁'}</span>
+              {sync.pending > 0 && sync.status !== 'syncing' ? sync.pending : sync.status === 'idle' ? '✓' : ''}
+            </a>
+          )}
         </header>
       )}
 

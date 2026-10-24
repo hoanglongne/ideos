@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { db } from '../db'
+import { clearAll } from '../db'
 import { exportJson, exportMarkdown, importJson } from '../lib/backup'
 import { getLocation } from '../lib/media'
 import { setSettings, useSettings } from '../lib/settings'
 import { downloadBlob } from '../lib/util'
+import { useSync } from '../sync/manager'
+import { SyncPanel } from './SyncPanel'
 import { useToast } from './Toast'
 
 export interface InstallPromptEvent extends Event {
@@ -16,6 +18,8 @@ const stamp = () => new Date().toISOString().slice(0, 10)
 
 export function Settings({ installEvent, onInstalled }: { installEvent: InstallPromptEvent | null; onInstalled: () => void }) {
   const st = useSettings()
+  const sync = useSync()
+  const signedIn = !!sync.email
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [persisted, setPersisted] = useState<boolean | null>(null)
@@ -53,10 +57,12 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
         </section>
       )}
 
+      <SyncPanel />
+
       <section className="card-plain">
         <h3>💾 Dữ liệu</h3>
         <p className="muted small">
-          Mọi thứ lưu ngay trên máy này (IndexedDB), không gửi đi đâu. Đã dùng {usage.usage !== undefined ? fmtBytes(usage.usage) : '…'}
+          Mọi thứ lưu ngay trên máy này (IndexedDB){signedIn ? ' và được đồng bộ lên Supabase của bạn' : ', không gửi đi đâu'}. Đã dùng {usage.usage !== undefined ? fmtBytes(usage.usage) : '…'}
           {usage.quota ? ` / ${fmtBytes(usage.quota)}` : ''}.
         </p>
         <div className="row wrap gap">
@@ -177,16 +183,16 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
         <button
           className="btn danger"
           onClick={async () => {
-            if (!confirm('Xoá TOÀN BỘ ý tưởng trên máy này? Không thể hoàn tác (trừ khi bạn có bản sao lưu).')) return
-            await db.transaction('rw', db.ideas, db.attachments, async () => {
-              await db.ideas.clear()
-              await db.attachments.clear()
-            })
+            const msg = signedIn
+              ? 'Xoá TOÀN BỘ ý tưởng trên máy này VÀ trên mọi máy đang đồng bộ? Không thể hoàn tác (trừ khi bạn có bản sao lưu).'
+              : 'Xoá TOÀN BỘ ý tưởng trên máy này? Không thể hoàn tác (trừ khi bạn có bản sao lưu).'
+            if (!confirm(msg)) return
+            await clearAll(signedIn)
             toast('Đã xoá toàn bộ dữ liệu')
             refreshStorage()
           }}
         >
-          Xoá tất cả dữ liệu
+          {signedIn ? 'Xoá tất cả dữ liệu (mọi máy)' : 'Xoá tất cả dữ liệu'}
         </button>
       </section>
       <p className="muted small center">Ideos v{__APP_VERSION__} · offline-first</p>

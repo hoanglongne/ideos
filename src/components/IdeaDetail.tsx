@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo, useState } from 'react'
-import { db, deleteIdea, linkIdeas, restoreIdea, updateIdea } from '../db'
+import { db, deleteIdea, linkIdeas, removeAttachment, restoreIdea, updateIdea } from '../db'
 import { ideaToMarkdown } from '../lib/backup'
 import { back, go } from '../lib/router'
 import { fold, iceScore, kindMeta, matchesQuery, timeAgo, uid } from '../lib/util'
@@ -103,7 +103,7 @@ export function IdeaDetail({ id }: { id: string }) {
 
       <EditableText className="body-input" value={idea.body} onSave={(body) => set({ body })} placeholder="Ghi chú thêm, chi tiết, cảm hứng…" />
 
-      <AttachmentList items={atts} onRemove={(i) => db.attachments.delete(atts[i].id)} />
+      <AttachmentList items={atts} onRemove={(i) => removeAttachment(atts[i].id)} />
       <MediaTools
         onText={(t) => set({ body: (idea.body ? idea.body.trimEnd() + ' ' : '') + t })}
         onAttach={(a) => db.attachments.add({ ...a, id: uid(), ideaId: id, createdAt: Date.now() })}

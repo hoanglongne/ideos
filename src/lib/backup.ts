@@ -1,4 +1,4 @@
-import { db } from '../db'
+import { db, stripSync } from '../db'
 import type { Attachment, Idea } from '../types'
 import { CANVAS_FIELDS, STATUSES } from '../types'
 import { iceScore, kindMeta } from './util'
@@ -22,8 +22,8 @@ const blobToDataUrl = (b: Blob) =>
 const dataUrlToBlob = async (d: string) => (await fetch(d)).blob()
 
 export async function exportJson(): Promise<Blob> {
-  const ideas = await db.ideas.toArray()
-  const atts = await db.attachments.toArray()
+  const ideas = (await db.ideas.toArray()).map(stripSync)
+  const atts = (await db.attachments.toArray()).map(stripSync)
   const attachments = await Promise.all(
     atts.map(async ({ blob, ...rest }) => ({ ...rest, data: await blobToDataUrl(blob) })),
   )
@@ -50,9 +50,9 @@ export async function importJson(file: Blob): Promise<{ added: number; updated: 
         skipped++
         continue
       }
-      await db.ideas.put(idea)
+      await db.ideas.put(stripSync(idea))
     }
-    for (const a of atts) if (!(await db.attachments.get(a.id))) await db.attachments.put(a)
+    for (const a of atts) if (!(await db.attachments.get(a.id))) await db.attachments.put(stripSync(a))
   })
   return { added, updated, skipped }
 }
