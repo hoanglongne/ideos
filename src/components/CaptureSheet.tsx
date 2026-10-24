@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { db, newIdea, updateIdea } from '../db'
 import { getLocation } from '../lib/media'
@@ -64,7 +65,7 @@ export function CaptureSheet({ initialText, onClose }: { initialText?: string; o
     })
     if (getSettings().geotag) getLocation().then((loc) => loc && updateIdea(idea.id, { location: loc }))
     writeDraft('')
-    toast('Đã lưu ý tưởng ✨', { label: 'Mở', run: () => go('/idea/' + idea.id) })
+    toast('Đã lưu ý tưởng', { label: 'Mở', run: () => go('/idea/' + idea.id) })
     onClose()
   }, [atts, canSave, kind, onClose, saving, text, toast])
 
@@ -75,11 +76,17 @@ export function CaptureSheet({ initialText, onClose }: { initialText?: string; o
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" role="dialog" aria-label="Ghi ý tưởng mới" onClick={(e) => e.stopPropagation()}>
-        <div className="sheet-handle" />
+        <div className="sheet-handle" aria-hidden="true" />
+        <div className="sheet-head">
+          <h2>Ý tưởng mới</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Đóng">
+            <X size={18} strokeWidth={1.7} />
+          </button>
+        </div>
         <textarea
           ref={taRef}
           className="capture-input"
-          placeholder={'Ý tưởng gì vừa loé lên?\n\nDòng đầu là tiêu đề. Gõ #tag để gắn nhãn, @app / @web / @startup để chọn loại.'}
+          placeholder={'Vừa nghĩ ra gì?\n\nDòng đầu là tiêu đề. Gõ #tag để gắn nhãn, @app hay @web để chọn loại.'}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -91,34 +98,29 @@ export function CaptureSheet({ initialText, onClose }: { initialText?: string; o
           }}
           rows={6}
         />
-        {interim && <div className="interim">🗣️ {interim}</div>}
+        {interim && <div className="interim">{interim}</div>}
         {parsed.tags.length > 0 && (
-          <div className="tag-row">
+          <p className="parsed">
+            Sẽ gắn tag{' '}
             {parsed.tags.map((t) => (
               <span key={t} className="tag">
                 #{t}
               </span>
             ))}
-          </div>
+          </p>
         )}
         <AttachmentList items={atts} onRemove={(i) => setAtts((xs) => xs.filter((_, j) => j !== i))} />
-        <div className="chips" role="radiogroup" aria-label="Loại ý tưởng">
+        <div className="kind-picker" role="radiogroup" aria-label="Loại ý tưởng">
           {KINDS.map((k) => (
-            <button
-              key={k.value}
-              role="radio"
-              aria-checked={effectiveKind === k.value}
-              className={'chip' + (effectiveKind === k.value ? ' on' : '')}
-              onClick={() => setKind(k.value)}
-            >
-              {k.emoji} {k.label}
+            <button key={k.value} role="radio" aria-checked={effectiveKind === k.value} className={'kind-opt' + (effectiveKind === k.value ? ' on' : '')} onClick={() => setKind(k.value)}>
+              {k.label}
             </button>
           ))}
         </div>
         <div className="sheet-footer">
           <MediaTools onText={appendText} onInterim={setInterim} onAttach={(a) => setAtts((xs) => [...xs, a])} />
-          <button className="btn primary big" disabled={!canSave || saving} onClick={save}>
-            Lưu
+          <button className="btn primary" disabled={!canSave || saving} onClick={save} title="Ctrl + Enter">
+            Lưu ý tưởng
           </button>
         </div>
       </div>

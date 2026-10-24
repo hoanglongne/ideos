@@ -61,7 +61,7 @@ export function ideaToMarkdown(idea: Idea): string {
   const out: string[] = []
   const k = kindMeta(idea.kind)
   const st = STATUSES.find((s) => s.value === idea.status)?.label
-  out.push(`## ${k.emoji} ${idea.title || '(không tiêu đề)'}`)
+  out.push(`## ${idea.title || '(không tiêu đề)'}`)
   const meta = [`Loại: ${k.label}`, `Trạng thái: ${st}`]
   const ice = iceScore(idea)
   if (ice !== null) meta.push(`ICE: ${ice}`)

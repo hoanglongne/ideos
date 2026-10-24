@@ -1,18 +1,21 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { BarChart3, Lightbulb, Plus, RotateCcw, Settings as SettingsIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { CaptureSheet } from './components/CaptureSheet'
 import { IdeaDetail } from './components/IdeaDetail'
 import { IdeaList } from './components/IdeaList'
+import { Mark } from './components/Mark'
 import { Review } from './components/Review'
 import { Settings, type InstallPromptEvent } from './components/Settings'
 import { Stats } from './components/Stats'
+import { SyncStatus } from './components/SyncPanel'
 import { db } from './db'
-import { useOnline } from './lib/media'
-import { go, useRoute } from './lib/router'
+import { go, useRoute, type Route } from './lib/router'
 import { useSettings } from './lib/settings'
-import { syncLabel } from './components/SyncPanel'
-import { initSync, useSync } from './sync/manager'
+import { REVIEWABLE } from './types'
+import { initSync } from './sync/manager'
+import { IS_DEMO, exitDemo } from './lib/demo'
 
 /** Đọc ?new=1 hoặc dữ liệu từ Web Share Target rồi dọn URL. */
 function takeLaunchParams(): { open: boolean; text?: string } {
@@ -25,11 +28,15 @@ function takeLaunchParams(): { open: boolean; text?: string } {
 
 const LAUNCH = takeLaunchParams()
 
+const NAV: { route: Route['name']; href: string; label: string; short: string; Icon: typeof Lightbulb }[] = [
+  { route: 'list', href: '#/', label: 'Ý tưởng', short: 'Ý tưởng', Icon: Lightbulb },
+  { route: 'review', href: '#/review', label: 'Ôn lại', short: 'Ôn lại', Icon: RotateCcw },
+  { route: 'stats', href: '#/stats', label: 'Thống kê', short: 'Thống kê', Icon: BarChart3 },
+]
+
 export default function App() {
   const route = useRoute()
   const { theme, reviewAfterDays } = useSettings()
-  const online = useOnline()
-  const sync = useSync()
   const [capture, setCapture] = useState<{ text?: string } | null>(LAUNCH.open ? { text: LAUNCH.text } : null)
   const [query, setQuery] = useState('')
   const [installEvent, setInstallEvent] = useState<InstallPromptEvent | null>(null)
@@ -37,15 +44,12 @@ export default function App() {
 
   const {
     needRefresh: [needRefresh],
-    offlineReady: [offlineReady, setOfflineReady],
     updateServiceWorker,
   } = useRegisterSW()
 
   const dueCount = useLiveQuery(async () => {
     const cutoff = Date.now() - reviewAfterDays * 86400_000
-    return db.ideas
-      .filter((i) => ['spark', 'exploring', 'validating', 'building', 'parked'].includes(i.status) && (i.reviewedAt ?? i.createdAt) < cutoff)
-      .count()
+    return db.ideas.filter((i) => REVIEWABLE.includes(i.status) && (i.reviewedAt ?? i.createdAt) < cutoff).count()
   }, [reviewAfterDays])
 
   useEffect(() => {
@@ -83,87 +87,87 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [route.name])
 
-  useEffect(() => {
-    if (offlineReady) {
-      const t = setTimeout(() => setOfflineReady(false), 4000)
-      return () => clearTimeout(t)
-    }
-  }, [offlineReady, setOfflineReady])
-
-  const titles: Record<string, string> = { review: 'Ôn lại', stats: 'Thống kê', settings: 'Cài đặt' }
+  const active = route.name === 'idea' ? 'list' : route.name
+  const openCapture = () => setCapture({})
 
   return (
-    <div className="app">
-      {route.name !== 'idea' && (
-        <header className="topbar">
-          {route.name === 'list' ? (
-            <>
-              <span className="logo" aria-hidden>
-                💡
-              </span>
-              <input
-                ref={searchRef}
-                className="search"
-                type="search"
-                placeholder="Tìm ý tưởng, #tag…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                aria-label="Tìm kiếm"
-              />
-            </>
-          ) : (
-            <h1>{titles[route.name]}</h1>
-          )}
-          {!online && <span className="offline" title="Đang offline — mọi thứ vẫn được lưu trên máy">offline</span>}
-          {sync.email && online && (
-            <a href="#/settings" className={'sync-chip ' + sync.status} title={syncLabel(sync)} aria-label={syncLabel(sync)}>
-              <span>{sync.status === 'syncing' ? '⟳' : sync.status === 'error' ? '⚠' : '☁'}</span>
-              {sync.pending > 0 && sync.status !== 'syncing' ? sync.pending : sync.status === 'idle' ? '✓' : ''}
+    <div className="shell">
+      <aside className="sidebar" aria-label="Điều hướng">
+        <a className="brand" href="#/">
+          <Mark size={26} />
+          <span>Ideos</span>
+        </a>
+        <button className="btn primary wide" onClick={openCapture}>
+          <Plus size={16} strokeWidth={2} aria-hidden /> Ghi ý tưởng
+          <kbd className="kbd-hint">N</kbd>
+        </button>
+        <nav className="nav">
+          {NAV.map(({ route: r, href, label, Icon }) => (
+            <a key={r} href={href} className={'nav-item' + (active === r ? ' on' : '')} aria-current={active === r ? 'page' : undefined}>
+              <Icon size={16} strokeWidth={1.6} aria-hidden />
+              <span>{label}</span>
+              {r === 'review' && !!dueCount && <span className="nav-count num">{dueCount}</span>}
             </a>
-          )}
-        </header>
-      )}
-
-      {(needRefresh || offlineReady) && (
-        <div className="banner">
-          {needRefresh ? (
-            <>
-              <span>Có phiên bản mới.</span>
-              <button className="btn primary" onClick={() => updateServiceWorker(true)}>
-                Cập nhật
-              </button>
-            </>
-          ) : (
-            <span>✅ Sẵn sàng dùng offline</span>
-          )}
+          ))}
+        </nav>
+        <div className="sidebar-foot">
+          <a href="#/settings" className={'nav-item' + (active === 'settings' ? ' on' : '')} aria-current={active === 'settings' ? 'page' : undefined}>
+            <SettingsIcon size={16} strokeWidth={1.6} aria-hidden />
+            <span>Cài đặt</span>
+          </a>
+          <SyncStatus />
         </div>
-      )}
+      </aside>
 
-      <main className="main">
-        {route.name === 'list' && <IdeaList query={query} onNew={() => setCapture({})} />}
+      <header className="phonebar">
+        <a className="brand" href="#/">
+          <Mark size={22} />
+          <span>Ideos</span>
+        </a>
+        <SyncStatus compact />
+      </header>
+
+      <main className="page">
+        {IS_DEMO && (
+          <div className="notice">
+            <span>Bạn đang xem dữ liệu mẫu. Những gì ghi ở đây không lẫn vào dữ liệu thật.</span>
+            <button className="btn" onClick={exitDemo}>
+              Thoát bản mẫu
+            </button>
+          </div>
+        )}
+        {needRefresh && (
+          <div className="notice">
+            <span>Có phiên bản mới của Ideos.</span>
+            <button className="btn" onClick={() => updateServiceWorker(true)}>
+              Cập nhật
+            </button>
+          </div>
+        )}
+        {route.name === 'list' && <IdeaList query={query} onQuery={setQuery} searchRef={searchRef} onNew={openCapture} dueCount={dueCount ?? 0} />}
         {route.name === 'idea' && <IdeaDetail id={route.id} />}
         {route.name === 'review' && <Review />}
         {route.name === 'stats' && <Stats />}
         {route.name === 'settings' && <Settings installEvent={installEvent} onInstalled={() => setInstallEvent(null)} />}
       </main>
 
-      <nav className="bottomnav">
-        <a href="#/" className={route.name === 'list' || route.name === 'idea' ? 'on' : ''}>
-          <span>💡</span>Ý tưởng
-        </a>
-        <a href="#/review" className={route.name === 'review' ? 'on' : ''}>
-          <span>🔁</span>Ôn lại
-          {!!dueCount && <i className="badge">{dueCount > 99 ? '99+' : dueCount}</i>}
-        </a>
-        <button className="fab" onClick={() => setCapture({})} aria-label="Ghi ý tưởng mới">
-          +
+      <nav className="tabbar" aria-label="Điều hướng">
+        {NAV.slice(0, 2).map(({ route: r, href, short, Icon }) => (
+          <a key={r} href={href} className={active === r ? 'on' : ''} aria-current={active === r ? 'page' : undefined}>
+            <Icon size={20} strokeWidth={1.6} aria-hidden />
+            <span>{short}</span>
+            {r === 'review' && !!dueCount && <i className="tab-count num">{dueCount > 99 ? '99+' : dueCount}</i>}
+          </a>
+        ))}
+        <button className="tab-capture" onClick={openCapture} aria-label="Ghi ý tưởng mới">
+          <Plus size={24} strokeWidth={2} aria-hidden />
         </button>
-        <a href="#/stats" className={route.name === 'stats' ? 'on' : ''}>
-          <span>📊</span>Thống kê
-        </a>
-        <a href="#/settings" className={route.name === 'settings' ? 'on' : ''}>
-          <span>⚙️</span>Cài đặt
-        </a>
+        {[NAV[2], { route: 'settings' as const, href: '#/settings', short: 'Cài đặt', Icon: SettingsIcon }].map(({ route: r, href, short, Icon }) => (
+          <a key={r} href={href} className={active === r ? 'on' : ''} aria-current={active === r ? 'page' : undefined}>
+            <Icon size={20} strokeWidth={1.6} aria-hidden />
+            <span>{short}</span>
+          </a>
+        ))}
       </nav>
 
       {capture && <CaptureSheet initialText={capture.text} onClose={() => setCapture(null)} />}

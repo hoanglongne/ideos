@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useState } from 'react'
 import type { Attachment, AttachmentType } from '../types'
 import { useObjectUrl } from '../lib/media'
@@ -18,9 +19,8 @@ function Thumb({ att, onRemove }: { att: PendingAttachment | Attachment; onRemov
     <div className={'att att-' + att.type}>
       {att.type === 'audio' ? (
         <div className="att-audio">
-          <span className="att-audio-icon">🎙️</span>
           <audio controls src={url} preload="metadata" />
-          {att.duration ? <span className="muted small">{formatDuration(att.duration)}</span> : null}
+          {att.duration ? <span className="muted num">{formatDuration(att.duration)}</span> : null}
         </div>
       ) : (
         <>
@@ -34,7 +34,7 @@ function Thumb({ att, onRemove }: { att: PendingAttachment | Attachment; onRemov
       )}
       {onRemove && (
         <button className="att-remove" aria-label="Xoá đính kèm" onClick={onRemove}>
-          ×
+          <X size={13} strokeWidth={2} />
         </button>
       )}
     </div>

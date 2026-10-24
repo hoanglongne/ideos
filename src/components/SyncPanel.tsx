@@ -9,9 +9,9 @@ export function syncLabel(s: SyncState): string {
     case 'syncing':
       return 'Đang đồng bộ…'
     case 'offline':
-      return s.pending ? `Offline — ${s.pending} thay đổi chờ đẩy lên` : 'Offline — sẽ đồng bộ khi có mạng'
+      return s.pending ? `Offline, ${s.pending} thay đổi chờ đẩy lên` : 'Offline, sẽ đồng bộ khi có mạng'
     case 'error':
-      return 'Lỗi đồng bộ: ' + (s.error ?? 'không rõ') + ' — sẽ tự thử lại'
+      return 'Lỗi đồng bộ: ' + (s.error ?? 'không rõ') + '. Sẽ tự thử lại.'
     case 'idle':
       if (s.pending) return `${s.pending} thay đổi chờ đồng bộ`
       return s.lastSyncAt ? `Đã đồng bộ ${timeAgo(s.lastSyncAt)}` : 'Đã kết nối'
@@ -22,11 +22,20 @@ export function syncLabel(s: SyncState): string {
 
 export function SyncPanel() {
   const s = useSync()
+  return s.status === 'disabled' ? <Setup /> : !s.email ? <Login /> : <Connected s={s} />
+}
+
+/** Trạng thái đồng bộ gọn cho thanh bên / thanh trên điện thoại. */
+export function SyncStatus({ compact }: { compact?: boolean }) {
+  const s = useSync()
+  if (!s.email && !compact) return null
+  if (!s.email) return null
+  const short = s.status === 'syncing' ? 'Đang đồng bộ' : s.status === 'error' ? 'Lỗi đồng bộ' : s.status === 'offline' ? 'Offline' : s.pending ? `${s.pending} chờ` : 'Đã đồng bộ'
   return (
-    <section className="card-plain">
-      <h3>☁️ Đồng bộ giữa các máy</h3>
-      {s.status === 'disabled' ? <Setup /> : !s.email ? <Login /> : <Connected s={s} />}
-    </section>
+    <a href="#/settings" className={'sync-status ' + s.status + (compact ? ' compact' : '')} title={syncLabel(s)}>
+      <span className="sync-dot" aria-hidden="true" />
+      <span>{compact ? short : syncLabel(s)}</span>
+    </a>
   )
 }
 
@@ -53,11 +62,9 @@ function Setup() {
   const toast = useToast()
   return (
     <>
-      <p className="muted small">
-        Dùng Supabase (gói miễn phí là đủ) làm kho đồng bộ riêng của bạn. Dữ liệu vẫn nằm trên máy và dùng offline bình thường — khi có mạng, app tự đẩy/kéo thay đổi.
-      </p>
+      <p className="panel-note">Kết nối một project Supabase của riêng bạn. Gói miễn phí là đủ.</p>
       <details className="howto">
-        <summary>Cách thiết lập (≈ 3 phút)</summary>
+        <summary>Cách thiết lập, khoảng 3 phút</summary>
         <ol>
           <li>
             Tạo project miễn phí tại{' '}
@@ -66,10 +73,10 @@ function Setup() {
             </a>
           </li>
           <li>
-            Mở <b>SQL Editor</b>, dán đoạn SQL bên dưới rồi bấm <b>Run</b>{' '}
+            Mở <b>SQL Editor</b>, dán đoạn SQL rồi bấm <b>Run</b>.{' '}
             <button
               type="button"
-              className="btn small-btn"
+              className="text-btn"
               onClick={async () => {
                 await navigator.clipboard.writeText(schemaSql)
                 toast('Đã chép SQL')
@@ -82,7 +89,7 @@ function Setup() {
             Vào <b>Project Settings → API</b>, chép <b>Project URL</b> và <b>anon / publishable key</b> dán vào ô dưới
           </li>
           <li>
-            Ở <b>Authentication → URL Configuration</b>, đặt <b>Site URL</b> là địa chỉ app này ({location.origin}) để link xác nhận email mở đúng app — hoặc tắt "Confirm email" nếu chỉ mình bạn dùng
+            Ở <b>Authentication → URL Configuration</b>, đặt <b>Site URL</b> là {location.origin} để link xác nhận email mở đúng app, hoặc tắt "Confirm email" nếu chỉ mình bạn dùng
           </li>
         </ol>
       </details>
@@ -93,8 +100,14 @@ function Setup() {
           run(() => saveConfig(url, key))
         }}
       >
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" inputMode="url" autoComplete="off" aria-label="Project URL" />
-        <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="anon / publishable key" autoComplete="off" aria-label="API key" />
+        <label className="field">
+          <span className="field-label">Project URL</span>
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" inputMode="url" autoComplete="off" aria-label="Project URL" />
+        </label>
+        <label className="field">
+          <span className="field-label">Anon hoặc publishable key</span>
+          <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="eyJ… hoặc sb_publishable_…" autoComplete="off" aria-label="API key" />
+        </label>
         <button className="btn primary" disabled={busy || !url || !key}>
           Kết nối
         </button>
@@ -112,8 +125,8 @@ function Login() {
   const toast = useToast()
   return (
     <>
-      <p className="muted small">
-        {mode === 'in' ? 'Đăng nhập cùng một tài khoản trên mọi máy để thấy chung ý tưởng.' : 'Tạo tài khoản trên Supabase của bạn.'} Ý tưởng đang có trên máy này sẽ được gộp vào tài khoản.
+      <p className="panel-note">
+        {mode === 'in' ? 'Đăng nhập cùng một tài khoản trên mọi máy để thấy chung ý tưởng.' : 'Tạo tài khoản trên project Supabase của bạn.'} Ý tưởng đang có trên máy này sẽ được gộp vào tài khoản.
       </p>
       <form
         className="stack"
@@ -128,32 +141,40 @@ function Login() {
           })
         }}
       >
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="email" aria-label="Email" required />
-        <input
-          type="password"
-          value={pw}
-          onChange={(e) => setPw(e.target.value)}
-          placeholder="Mật khẩu (≥ 6 ký tự)"
-          autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
-          aria-label="Mật khẩu"
-          minLength={6}
-          required
-        />
+        <label className="field">
+          <span className="field-label">Email</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" aria-label="Email" required />
+        </label>
+        <label className="field">
+          <span className="field-label">Mật khẩu</span>
+          <input
+            type="password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            placeholder="Ít nhất 6 ký tự"
+            autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
+            aria-label="Mật khẩu"
+            minLength={6}
+            required
+          />
+        </label>
         <button className="btn primary" disabled={busy}>
           {mode === 'in' ? 'Đăng nhập' : 'Tạo tài khoản'}
         </button>
       </form>
-      <div className="row wrap gap">
-        <button className="btn ghost" onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
+      <p className="panel-note">
+        <button className="text-btn" onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
           {mode === 'in' ? 'Chưa có tài khoản? Tạo mới' : 'Đã có tài khoản? Đăng nhập'}
         </button>
         {!s.configFromEnv && (
-          <button className="btn ghost muted" onClick={() => run(forgetConfig)}>
-            Đổi server
-          </button>
+          <>
+            {' · '}Server {s.url.replace(/^https?:\/\//, '')}{' '}
+            <button className="text-btn" onClick={() => run(forgetConfig)}>
+              Đổi
+            </button>
+          </>
         )}
-      </div>
-      {!s.configFromEnv && <p className="muted small">Server: {s.url.replace(/^https?:\/\//, '')}</p>}
+      </p>
     </>
   )
 }
@@ -164,26 +185,26 @@ function Connected({ s }: { s: SyncState }) {
   return (
     <>
       <div className={'sync-line ' + s.status}>
-        <span className="sync-dot" />
+        <span className="sync-dot" aria-hidden="true" />
         <span>{syncLabel(s)}</span>
       </div>
-      <p className="muted small">Tài khoản: {s.email}</p>
-      <div className="row wrap gap">
+      <p className="panel-note">Tài khoản {s.email}</p>
+      <div className="row-actions">
         <button className="btn" disabled={s.status === 'syncing'} onClick={() => requestSync(0)}>
-          ⟳ Đồng bộ ngay
+          Đồng bộ ngay
         </button>
-        <button className="btn ghost" onClick={() => setConfirmOut(!confirmOut)}>
+        <button className="text-btn" onClick={() => setConfirmOut(!confirmOut)} aria-expanded={confirmOut}>
           Đăng xuất
         </button>
       </div>
       {confirmOut && (
         <div className="confirm-box">
-          {s.pending > 0 && <p className="danger-text small">Còn {s.pending} thay đổi chưa đồng bộ — app sẽ cố đẩy lên trước khi thoát.</p>}
-          <div className="row wrap gap">
+          {s.pending > 0 && <p className="panel-note danger-text">Còn {s.pending} thay đổi chưa đồng bộ. App sẽ cố đẩy lên trước khi thoát.</p>}
+          <div className="row-actions">
             <button className="btn" disabled={busy} onClick={() => run(() => signOut(false))}>
               Thoát, giữ dữ liệu trên máy
             </button>
-            <button className="btn danger" disabled={busy || (s.pending > 0 && s.status === 'offline')} onClick={() => run(() => signOut(true))}>
+            <button className="text-btn danger" disabled={busy || (s.pending > 0 && s.status === 'offline')} onClick={() => run(() => signOut(true))}>
               Thoát & xoá dữ liệu trên máy này
             </button>
           </div>

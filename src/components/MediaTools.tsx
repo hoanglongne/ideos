@@ -1,3 +1,4 @@
+import { AudioLines, Camera, Mic, PenLine, Square } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useDictation, useOnline, useRecorder } from '../lib/media'
 import { useSettings } from '../lib/settings'
@@ -52,31 +53,32 @@ export function MediaTools({
 
   return (
     <>
-      <div className="media-tools">
+      <div className="media-tools" role="group" aria-label="Thêm giọng nói, ảnh hoặc bản phác">
         {onText && dict.supported && (
           <button
             type="button"
             className={'tool' + (dict.listening ? ' live' : '')}
             onClick={() => (dict.listening ? dict.stop() : dict.start())}
-            title={online ? 'Nói để nhập chữ' : 'Đọc chính tả thường cần mạng'}
+            aria-pressed={dict.listening}
+            title={online ? 'Nói để nhập chữ' : 'Nói thành chữ thường cần mạng, khi offline hãy dùng Ghi âm'}
           >
-            <span>🗣️</span>
-            <span className="tool-label">{dict.listening ? 'Đang nghe…' : 'Nói→chữ'}</span>
+            <Mic size={16} strokeWidth={1.7} aria-hidden />
+            <span>{dict.listening ? 'Đang nghe' : 'Nói'}</span>
           </button>
         )}
         {rec.supported && (
-          <button type="button" className={'tool' + (rec.recording ? ' live rec' : '')} onClick={toggleRecord} title="Ghi âm (dùng được offline)">
-            <span>{rec.recording ? '⏹' : '🎙️'}</span>
-            <span className="tool-label">{rec.recording ? formatDuration(rec.elapsed) : 'Ghi âm'}</span>
+          <button type="button" className={'tool' + (rec.recording ? ' live' : '')} onClick={toggleRecord} aria-pressed={rec.recording} title="Ghi âm, dùng được khi offline">
+            {rec.recording ? <Square size={14} strokeWidth={2} aria-hidden /> : <AudioLines size={16} strokeWidth={1.7} aria-hidden />}
+            <span className="num">{rec.recording ? formatDuration(rec.elapsed) : 'Ghi âm'}</span>
           </button>
         )}
-        <button type="button" className="tool" onClick={() => fileRef.current?.click()} title="Chụp / chọn ảnh">
-          <span>📷</span>
-          <span className="tool-label">Ảnh</span>
+        <button type="button" className="tool" onClick={() => fileRef.current?.click()} title="Chụp hoặc chọn ảnh">
+          <Camera size={16} strokeWidth={1.7} aria-hidden />
+          <span>Ảnh</span>
         </button>
-        <button type="button" className="tool" onClick={() => setSketching(true)} title="Phác nhanh">
-          <span>✏️</span>
-          <span className="tool-label">Phác</span>
+        <button type="button" className="tool" onClick={() => setSketching(true)} title="Phác nhanh giao diện, sơ đồ">
+          <PenLine size={16} strokeWidth={1.7} aria-hidden />
+          <span>Phác</span>
         </button>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => onFiles(e.target.files)} />
       </div>

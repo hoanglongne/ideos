@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { clearAll } from '../db'
 import { exportJson, exportMarkdown, importJson } from '../lib/backup'
 import { getLocation } from '../lib/media'
@@ -13,8 +13,26 @@ export interface InstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-const fmtBytes = (n: number) => (n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' KB')
+const fmtBytes = (n: number) => (n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' KB')
 const stamp = () => new Date().toISOString().slice(0, 10)
+
+function Row({ id, title, desc, children }: { id: string; title: string; desc?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="set-row" aria-labelledby={id}>
+      <div className="set-label">
+        <h2 id={id}>{title}</h2>
+        {desc && <p>{desc}</p>}
+      </div>
+      <div className="set-panel">{children}</div>
+    </section>
+  )
+}
+
+function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <input type="checkbox" role="switch" className="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
+  )
+}
 
 export function Settings({ installEvent, onInstalled }: { installEvent: InstallPromptEvent | null; onInstalled: () => void }) {
   const st = useSettings()
@@ -36,59 +54,68 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
 
   return (
     <div className="settings">
-      {!standalone && (
-        <section className="card-plain">
-          <h3>📲 Cài lên màn hình chính</h3>
-          {installEvent ? (
-            <button
-              className="btn primary"
-              onClick={async () => {
-                await installEvent.prompt()
-                if ((await installEvent.userChoice).outcome === 'accepted') onInstalled()
-              }}
-            >
-              Cài Ideos
-            </button>
+      <header className="title-row">
+        <div className="title-text">
+          <h1 className="page-title">Cài đặt</h1>
+          <p className="lede">Mọi thứ được lưu ngay trên máy này{signedIn ? ' và đồng bộ qua Supabase của bạn' : ''}.</p>
+        </div>
+      </header>
+
+      <Row id="sync-h" title="Đồng bộ giữa các máy" desc="Ghi trên điện thoại, xem lại trên laptop. Mất mạng vẫn dùng bình thường, có mạng lại thì tự đẩy và kéo thay đổi.">
+        <SyncPanel />
+      </Row>
+
+      <Row
+        id="data-h"
+        title="Dữ liệu"
+        desc={
+          <>
+            Đang dùng <span className="num">{usage.usage !== undefined ? fmtBytes(usage.usage) : '—'}</span>
+            {usage.quota ? (
+              <>
+                {' '}
+                trên <span className="num">{fmtBytes(usage.quota)}</span> trình duyệt cho phép
+              </>
+            ) : null}
+            .
+          </>
+        }
+      >
+        <div className="set-item">
+          <div>
+            <p className="item-title">Giữ dữ liệu lâu dài</p>
+            <p className="item-desc">{persisted ? 'Trình duyệt sẽ không tự xoá dữ liệu của Ideos.' : 'Không bật thì trình duyệt có thể xoá dữ liệu khi máy đầy bộ nhớ.'}</p>
+          </div>
+          {persisted ? (
+            <span className="pill tone-positive">Đã bật</span>
           ) : (
-            <p className="muted small">
-              {isIOS ? 'Trên iPhone: bấm nút Chia sẻ ⎋ rồi chọn "Thêm vào MH chính".' : 'Mở menu trình duyệt và chọn "Cài đặt ứng dụng" / "Thêm vào màn hình chính".'} Sau khi cài, app mở tức thì và chạy hoàn toàn offline.
-            </p>
-          )}
-        </section>
-      )}
-
-      <SyncPanel />
-
-      <section className="card-plain">
-        <h3>💾 Dữ liệu</h3>
-        <p className="muted small">
-          Mọi thứ lưu ngay trên máy này (IndexedDB){signedIn ? ' và được đồng bộ lên Supabase của bạn' : ', không gửi đi đâu'}. Đã dùng {usage.usage !== undefined ? fmtBytes(usage.usage) : '…'}
-          {usage.quota ? ` / ${fmtBytes(usage.quota)}` : ''}.
-        </p>
-        <div className="row wrap gap">
-          {persisted === false && (
             <button
               className="btn"
               onClick={async () => {
                 const ok = await navigator.storage.persist()
-                toast(ok ? 'Trình duyệt sẽ không tự xoá dữ liệu' : 'Trình duyệt chưa cho phép — hãy cài app lên màn hình chính')
+                toast(ok ? 'Đã bật, trình duyệt sẽ giữ dữ liệu' : 'Trình duyệt chưa cho phép. Hãy cài app lên màn hình chính rồi thử lại.')
                 refreshStorage()
               }}
             >
-              🔒 Bảo vệ dữ liệu khỏi bị xoá
+              Bật
             </button>
           )}
-          {persisted && <span className="muted small">🔒 Dữ liệu đã được bảo vệ</span>}
         </div>
-        <div className="row wrap gap">
+        <div className="set-item">
+          <div>
+            <p className="item-title">Sao lưu và khôi phục</p>
+            <p className="item-desc">File JSON gồm cả ảnh và ghi âm. Khôi phục sẽ gộp, bản nào sửa sau thì giữ bản đó.</p>
+          </div>
+        </div>
+        <div className="row-actions">
           <button className="btn" onClick={async () => downloadBlob(await exportJson(), `ideos-backup-${stamp()}.json`)}>
-            ⬇ Sao lưu (JSON)
-          </button>
-          <button className="btn" onClick={async () => downloadBlob(await exportMarkdown(), `ideos-${stamp()}.md`)}>
-            ⬇ Xuất Markdown
+            Tải bản sao lưu
           </button>
           <button className="btn" onClick={() => fileRef.current?.click()}>
-            ⬆ Khôi phục / nhập
+            Khôi phục từ file
+          </button>
+          <button className="text-btn" onClick={async () => downloadBlob(await exportMarkdown(), `ideos-${stamp()}.md`)}>
+            Xuất Markdown
           </button>
           <input
             ref={fileRef}
@@ -109,46 +136,50 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
             }}
           />
         </div>
-        <p className="muted small">Mẹo: sao lưu JSON thỉnh thoảng rồi lưu vào Drive/iCloud để chuyển sang máy khác.</p>
-      </section>
+      </Row>
 
-      <section className="card-plain">
-        <h3>⚙️ Tuỳ chọn</h3>
-        <label className="setting">
-          <span>Giao diện</span>
+      <Row id="pref-h" title="Tuỳ chọn" desc="Lưu riêng trên máy này.">
+        <label className="set-item">
+          <span>
+            <span className="item-title">Giao diện</span>
+          </span>
           <select value={st.theme} onChange={(e) => setSettings({ theme: e.target.value as typeof st.theme })}>
             <option value="system">Theo hệ thống</option>
-            <option value="dark">Tối</option>
             <option value="light">Sáng</option>
+            <option value="dark">Tối</option>
           </select>
         </label>
-        <label className="setting">
-          <span>
-            Gắn vị trí khi ghi
-            <small className="muted">Nhớ lại mình nghĩ ra ý tưởng ở đâu</small>
-          </span>
-          <input
-            type="checkbox"
+        <div className="set-item">
+          <div>
+            <p className="item-title">Gắn vị trí khi ghi</p>
+            <p className="item-desc">Để nhớ lại mình nghĩ ra ý tưởng ở đâu. Vị trí chỉ lưu trong ý tưởng.</p>
+          </div>
+          <Switch
+            label="Gắn vị trí khi ghi"
             checked={st.geotag}
-            onChange={async (e) => {
-              const on = e.target.checked
+            onChange={async (on) => {
               if (on && !(await getLocation(10000))) {
-                toast('Không lấy được vị trí — kiểm tra quyền truy cập')
+                toast('Không lấy được vị trí. Kiểm tra quyền truy cập vị trí.')
                 return
               }
               setSettings({ geotag: on })
             }}
           />
-        </label>
-        <label className="setting">
-          <span>Ngôn ngữ nói→chữ</span>
+        </div>
+        <label className="set-item">
+          <span>
+            <span className="item-title">Ngôn ngữ khi nói thành chữ</span>
+          </span>
           <select value={st.speechLang} onChange={(e) => setSettings({ speechLang: e.target.value })}>
             <option value="vi-VN">Tiếng Việt</option>
             <option value="en-US">English</option>
           </select>
         </label>
-        <label className="setting">
-          <span>Nhắc ôn lại sau</span>
+        <label className="set-item">
+          <span>
+            <span className="item-title">Đưa vào hàng ôn lại sau</span>
+            <span className="item-desc">Ý tưởng chưa xem lại sau khoảng này sẽ được nhắc.</span>
+          </span>
           <select value={st.reviewAfterDays} onChange={(e) => setSettings({ reviewAfterDays: +e.target.value })}>
             {[1, 3, 7, 14, 30].map((d) => (
               <option key={d} value={d}>
@@ -157,45 +188,63 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
             ))}
           </select>
         </label>
-      </section>
+      </Row>
 
-      <section className="card-plain">
-        <h3>⌨️ Ghi nhanh như dân pro</h3>
+      {!standalone && (
+        <Row id="install-h" title="Cài lên màn hình chính" desc="Sau khi cài, app mở tức thì và chạy hoàn toàn offline.">
+          {installEvent ? (
+            <button
+              className="btn primary"
+              onClick={async () => {
+                await installEvent.prompt()
+                if ((await installEvent.userChoice).outcome === 'accepted') onInstalled()
+              }}
+            >
+              Cài Ideos
+            </button>
+          ) : (
+            <p className="panel-note">
+              {isIOS ? 'Trên iPhone: bấm nút Chia sẻ trong Safari rồi chọn "Thêm vào MH chính".' : 'Mở menu của trình duyệt và chọn "Cài đặt ứng dụng" hoặc "Thêm vào màn hình chính".'}
+            </p>
+          )}
+        </Row>
+      )}
+
+      <Row id="help-h" title="Ghi nhanh" desc="Những cách để ghi xong một ý tưởng trong vài giây.">
         <ul className="help">
-          <li>Dòng đầu tiên = tiêu đề, các dòng sau = ghi chú</li>
+          <li>Dòng đầu là tiêu đề, các dòng sau là ghi chú.</li>
           <li>
-            <code>#tag</code> gắn nhãn, ví dụ <code>#ai #edu</code>
+            <code>#tag</code> gắn nhãn, ví dụ <code>#ai #giaoduc</code>.
           </li>
           <li>
-            <code>@web</code> <code>@app</code> <code>@startup</code> <code>@product</code> <code>@feature</code> chọn loại
+            <code>@web</code> <code>@app</code> <code>@startup</code> <code>@product</code> <code>@feature</code> chọn loại.
           </li>
           <li>
-            <kbd>N</kbd> ghi mới · <kbd>/</kbd> tìm · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> lưu · <kbd>Esc</kbd> đóng
+            <kbd>N</kbd> ghi mới, <kbd>/</kbd> tìm, <kbd>Ctrl</kbd> + <kbd>Enter</kbd> lưu, <kbd>Esc</kbd> đóng.
           </li>
-          <li>Tìm kiếm không cần gõ dấu: "y tuong" khớp "ý tưởng"</li>
-          <li>Trên Android: chia sẻ link/text từ app khác → chọn Ideos để lưu thành ý tưởng</li>
-          <li>Ghi âm chạy cả khi offline; "Nói→chữ" thường cần mạng</li>
+          <li>Tìm không cần gõ dấu: "y tuong" vẫn ra "ý tưởng".</li>
+          <li>Trên Android: chia sẻ link hoặc đoạn chữ từ app khác vào Ideos để lưu thành ý tưởng.</li>
+          <li>Ghi âm dùng được khi offline. Nói thành chữ thường cần mạng.</li>
         </ul>
-      </section>
+      </Row>
 
-      <section className="card-plain">
-        <h3 className="danger-text">Vùng nguy hiểm</h3>
+      <Row id="danger-h" title="Xoá dữ liệu" desc={signedIn ? 'Xoá toàn bộ ý tưởng trên máy này và trên mọi máy đang đồng bộ.' : 'Xoá toàn bộ ý tưởng trên máy này.'}>
+        <p className="panel-note">Không thể hoàn tác, trừ khi bạn đã tải bản sao lưu.</p>
         <button
-          className="btn danger"
+          className="btn danger-outline"
           onClick={async () => {
-            const msg = signedIn
-              ? 'Xoá TOÀN BỘ ý tưởng trên máy này VÀ trên mọi máy đang đồng bộ? Không thể hoàn tác (trừ khi bạn có bản sao lưu).'
-              : 'Xoá TOÀN BỘ ý tưởng trên máy này? Không thể hoàn tác (trừ khi bạn có bản sao lưu).'
-            if (!confirm(msg)) return
+            const msg = signedIn ? 'Xoá toàn bộ ý tưởng trên máy này VÀ trên mọi máy đang đồng bộ?' : 'Xoá toàn bộ ý tưởng trên máy này?'
+            if (!confirm(msg + ' Không thể hoàn tác.')) return
             await clearAll(signedIn)
             toast('Đã xoá toàn bộ dữ liệu')
             refreshStorage()
           }}
         >
-          {signedIn ? 'Xoá tất cả dữ liệu (mọi máy)' : 'Xoá tất cả dữ liệu'}
+          {signedIn ? 'Xoá trên mọi máy' : 'Xoá tất cả ý tưởng'}
         </button>
-      </section>
-      <p className="muted small center">Ideos v{__APP_VERSION__} · offline-first</p>
+      </Row>
+
+      <p className="colophon muted">Ideos {__APP_VERSION__}</p>
     </div>
   )
 }

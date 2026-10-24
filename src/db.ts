@@ -2,6 +2,7 @@ import Dexie, { type EntityTable, type Table } from 'dexie'
 import type { Attachment, Idea } from './types'
 import { emptyCanvas } from './types'
 import { uid } from './lib/util'
+import { IS_DEMO, demoIdeas } from './lib/demo'
 
 /**
  * Đồng bộ: mọi bản ghi có cờ `dirty` (1 = có thay đổi chưa đẩy lên server).
@@ -88,7 +89,12 @@ export function createDb(name: string): IdeosDB {
   return d
 }
 
-export const db = createDb('ideos')
+export const db = createDb(IS_DEMO ? 'ideos-demo' : 'ideos')
+
+if (IS_DEMO)
+  db.on('ready', async () => {
+    if (!(await db.ideas.count())) await db.ideas.bulkAdd(demoIdeas())
+  })
 
 /** Bỏ các trường nội bộ của đồng bộ khỏi bản ghi (dùng khi xuất/sao chép). */
 export function stripSync<T extends object>(row: T): Omit<T, keyof SyncFlags> {

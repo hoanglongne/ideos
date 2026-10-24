@@ -4,10 +4,8 @@ import { db, linkIdeas, newIdea, updateIdea } from '../db'
 import { go } from '../lib/router'
 import { useSettings } from '../lib/settings'
 import { iceScore, kindMeta, timeAgo } from '../lib/util'
-import type { Idea, IdeaStatus } from '../types'
-import { StatusBadge } from './IdeaCard'
-
-const REVIEWABLE: IdeaStatus[] = ['spark', 'exploring', 'validating', 'building', 'parked']
+import { REVIEWABLE, type Idea } from '../types'
+import { StatusPill } from './IdeaRow'
 
 const PROMPTS = [
   'Nếu chỉ có 1 cuối tuần để làm bản đầu tiên, bạn sẽ cắt bớt gì?',
@@ -30,14 +28,20 @@ export function Review() {
   const [tab, setTab] = useState<'review' | 'mix'>('review')
   return (
     <div className="review">
-      <div className="seg">
-        <button className={tab === 'review' ? 'on' : ''} onClick={() => setTab('review')}>
-          🔁 Ôn lại
-        </button>
-        <button className={tab === 'mix' ? 'on' : ''} onClick={() => setTab('mix')}>
-          🎲 Trộn & gợi mở
-        </button>
-      </div>
+      <header className="title-row">
+        <div className="title-text">
+          <h1 className="page-title">{tab === 'review' ? 'Ôn lại' : 'Ghép ý tưởng'}</h1>
+          <p className="lede">{tab === 'review' ? 'Xem lại từng ý tưởng cũ để không cái nào bị chôn vùi.' : 'Ghép ngẫu nhiên hai ý tưởng. Đôi khi một cặp lạ lại ra thứ hay.'}</p>
+        </div>
+        <div className="seg" role="tablist" aria-label="Chế độ">
+          <button role="tab" aria-selected={tab === 'review'} className={tab === 'review' ? 'on' : ''} onClick={() => setTab('review')}>
+            Ôn lại
+          </button>
+          <button role="tab" aria-selected={tab === 'mix'} className={tab === 'mix' ? 'on' : ''} onClick={() => setTab('mix')}>
+            Ghép
+          </button>
+        </div>
+      </header>
       {tab === 'review' ? <ReviewQueue /> : <Mixer />}
     </div>
   )
@@ -62,15 +66,18 @@ function ReviewQueue() {
 
   const currentId = queue?.[idx]
   const idea = useLiveQuery(() => (currentId ? db.ideas.get(currentId) : undefined), [currentId])
+  const upcoming = useLiveQuery(async () => (queue ? (await db.ideas.bulkGet(queue.slice(idx + 1, idx + 6))).filter((x): x is Idea => !!x) : []), [queue, idx], [])
 
   if (!queue) return null
   if (!currentId)
     return (
-      <div className="empty">
-        <div className="empty-emoji">🎉</div>
-        <h2>{queue.length ? 'Ôn xong rồi!' : 'Không có gì cần ôn'}</h2>
-        <p className="muted">Ý tưởng chưa được xem lại sau {reviewAfterDays} ngày sẽ xuất hiện ở đây, để không ý nào bị chôn vùi.</p>
-      </div>
+      <section className="panel done-panel" aria-labelledby="done-h">
+        <h2 id="done-h">{queue.length ? `Đã ôn xong ${queue.length} ý tưởng.` : 'Chưa có gì cần ôn.'}</h2>
+        <p className="panel-note">Ý tưởng chưa được xem lại sau {reviewAfterDays} ngày sẽ vào đây. Đổi khoảng này trong Cài đặt.</p>
+        <a className="btn" href="#/">
+          Về danh sách
+        </a>
+      </section>
     )
   if (!idea) return null
 
@@ -78,49 +85,98 @@ function ReviewQueue() {
     await updateIdea(idea.id, { ...changes, reviewedAt: Date.now() })
     setIdx((i) => i + 1)
   }
-  const k = kindMeta(idea.kind)
   const ice = iceScore(idea)
+  const done = idea.tasks.filter((t) => t.done).length
+  const last = idea.reviewedAt ?? idea.createdAt
 
   return (
-    <div>
-      <p className="muted small center">
-        {idx + 1} / {queue.length} ý tưởng đang chờ ôn
-      </p>
-      <div className="review-card">
-        <div className="row gap">
-          <span className="kind big">{k.emoji}</span>
-          <StatusBadge status={idea.status} />
-          {ice !== null && <span className="ice">⚡ {ice}</span>}
-          <span className="muted small push">{timeAgo(idea.createdAt)}</span>
+    <div className="review-grid">
+      <div className="review-flow">
+        <div className="progress" aria-label={`Ý tưởng ${idx + 1} trên ${queue.length}`}>
+          <span className="num">
+            {idx + 1} trên {queue.length}
+          </span>
+          <span className="progress-track" aria-hidden="true">
+            <span style={{ width: `${((idx + 1) / queue.length) * 100}%` }} />
+          </span>
         </div>
-        <h2>{idea.title}</h2>
-        {idea.body && <p className="pre">{idea.body}</p>}
-        {idea.canvas.problem && (
-          <p>
-            <b>Vấn đề:</b> {idea.canvas.problem}
+        <article className="panel review-card" aria-labelledby="rv-h">
+          <p className="meta-line">
+            <span>{kindMeta(idea.kind).label}</span>
+            <StatusPill status={idea.status} />
+            <span>ghi {timeAgo(idea.createdAt)}</span>
           </p>
+          <h2 id="rv-h" className="review-title">
+            {idea.title}
+          </h2>
+          {idea.body && <p className="pre review-body">{idea.body}</p>}
+          {idea.canvas.problem && (
+            <p className="review-body">
+              <span className="muted">Vấn đề: </span>
+              {idea.canvas.problem}
+            </p>
+          )}
+          <dl className="facts">
+            <div>
+              <dt>Điểm ICE</dt>
+              <dd className={'num' + (ice === null ? ' none' : ' ice-figure')}>{ice === null ? '—' : ice.toFixed(1)}</dd>
+            </div>
+            <div>
+              <dt>Bước tiếp theo</dt>
+              <dd className={'num' + (idea.tasks.length ? '' : ' none')}>{idea.tasks.length ? `${done}/${idea.tasks.length}` : '—'}</dd>
+            </div>
+            <div>
+              <dt>Tag</dt>
+              <dd className={idea.tags.length ? '' : 'none'}>{idea.tags.length ? idea.tags.map((t) => '#' + t).join(' ') : '—'}</dd>
+            </div>
+            <div>
+              <dt>{idea.reviewedAt ? 'Xem lần cuối' : 'Chưa xem lại'}</dt>
+              <dd className="num">{Math.floor((Date.now() - last) / 86400_000)} ngày trước</dd>
+            </div>
+          </dl>
+          <p className="prompt">
+            <span className="muted">Thử nghĩ: </span>
+            {PROMPTS[(idea.title.length + idx) % PROMPTS.length]}
+          </p>
+          <div className="review-actions">
+            <button className="btn primary" onClick={() => act({ status: idea.status === 'parked' ? 'exploring' : idea.status })}>
+              Vẫn đáng theo
+            </button>
+            <button className="btn" onClick={() => act({ status: 'parked' })}>
+              Để sau
+            </button>
+            <button className="text-btn danger" onClick={() => act({ status: 'dropped' })}>
+              Bỏ ý tưởng
+            </button>
+            <span className="push" />
+            <button className="text-btn" onClick={() => go('/idea/' + idea.id)}>
+              Mở chi tiết
+            </button>
+            <button className="text-btn" onClick={() => setIdx((i) => i + 1)}>
+              Bỏ qua
+            </button>
+          </div>
+        </article>
+      </div>
+      <aside className="panel review-side" aria-labelledby="next-h">
+        <div className="panel-head">
+          <h2 id="next-h">Tiếp theo trong hàng</h2>
+          <span className="muted num">{queue.length - idx - 1}</span>
+        </div>
+        {upcoming.length ? (
+          <ul className="mini-list">
+            {upcoming.map((i) => (
+              <li key={i.id}>
+                <span className="next-title">{i.title}</span>
+                <span className="muted num">{Math.floor((Date.now() - (i.reviewedAt ?? i.createdAt)) / 86400_000)} ngày</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="panel-note">Đây là ý tưởng cuối cùng trong hàng.</p>
         )}
-        <p className="prompt">💭 {PROMPTS[(idea.title.length + idx) % PROMPTS.length]}</p>
-      </div>
-      <div className="review-actions">
-        <button className="btn big good" onClick={() => act({ status: idea.status === 'parked' ? 'exploring' : idea.status })}>
-          🔥 Vẫn hay
-        </button>
-        <button className="btn big" onClick={() => act({ status: 'parked' })}>
-          ⏸ Để sau
-        </button>
-        <button className="btn big danger" onClick={() => act({ status: 'dropped' })}>
-          ✕ Bỏ
-        </button>
-      </div>
-      <div className="row center gap">
-        <button className="btn ghost" onClick={() => go('/idea/' + idea.id)}>
-          Mở chi tiết
-        </button>
-        <button className="btn ghost" onClick={() => setIdx((i) => i + 1)}>
-          Bỏ qua →
-        </button>
-      </div>
+        <p className="panel-note review-hint">Ý tưởng cũ nhất được đưa ra trước. Mỗi lần bạn chọn, nó sẽ quay lại sau {reviewAfterDays} ngày.</p>
+      </aside>
     </div>
   )
 }
@@ -146,10 +202,10 @@ function Mixer() {
   if (!ideas) return null
   if (ideas.length < 2)
     return (
-      <div className="empty">
-        <div className="empty-emoji">🎲</div>
-        <p className="muted">Cần ít nhất 2 ý tưởng để trộn. Ghi thêm vài cái nhé!</p>
-      </div>
+      <section className="panel done-panel" aria-labelledby="mix-empty-h">
+        <h2 id="mix-empty-h">Cần ít nhất 2 ý tưởng để ghép.</h2>
+        <p className="panel-note">Hiện có {ideas.length}. Ghi thêm vài cái rồi quay lại.</p>
+      </section>
     )
 
   const combine = async () => {
@@ -157,8 +213,8 @@ function Mixer() {
     const [a, b] = pair
     const idea = newIdea({
       title: `${a.title} × ${b.title}`,
-      body: `Kết hợp từ:\n• ${a.title}\n• ${b.title}`,
-      tags: [...new Set([...a.tags, ...b.tags, 'combo'])],
+      body: `Ghép từ:\n• ${a.title}\n• ${b.title}`,
+      tags: [...new Set([...a.tags, ...b.tags, 'ghep'])],
       kind: a.kind,
     })
     await db.ideas.add(idea)
@@ -168,35 +224,37 @@ function Mixer() {
   }
 
   return (
-    <div>
-      <p className="muted center">Ghép ngẫu nhiên hai ý tưởng — đôi khi combo lạ lại ra thứ hay.</p>
+    <div className="mixer">
       {pair && (
         <div className="mix">
-          {pair.map((i) => (
-            <a key={i.id} className="mix-card" href={'#/idea/' + i.id}>
-              <span className="kind big">{kindMeta(i.kind).emoji}</span>
-              <b>{i.title}</b>
-              {i.body && <span className="muted small clamp">{i.body}</span>}
+          {pair.map((i, n) => (
+            <a key={i.id} className="panel mix-card" href={'#/idea/' + i.id}>
+              <span className="muted">
+                {n === 0 ? 'Ý tưởng thứ nhất' : 'Ý tưởng thứ hai'} · {kindMeta(i.kind).label}
+              </span>
+              <h2>{i.title}</h2>
+              {i.body && <p className="clamp">{i.body}</p>}
             </a>
           ))}
-          <div className="mix-x">×</div>
         </div>
       )}
-      <div className="row center gap">
-        <button className="btn big" onClick={shuffle}>
-          🎲 Trộn lại
+      <div className="row-actions">
+        <button className="btn primary" onClick={combine}>
+          Tạo ý tưởng từ cặp này
         </button>
-        <button className="btn big primary" onClick={combine}>
-          ✨ Tạo ý tưởng combo
+        <button className="btn" onClick={shuffle}>
+          Ghép cặp khác
         </button>
       </div>
-      <div className="prompt-box">
-        <p className="muted small">Câu hỏi gợi mở</p>
+      <section className="panel prompt-panel" aria-labelledby="prompt-h">
+        <div className="panel-head">
+          <h2 id="prompt-h">Câu hỏi gợi mở</h2>
+          <button className="text-btn" onClick={() => setPrompt(pick(PROMPTS))}>
+            Câu khác
+          </button>
+        </div>
         <p className="prompt-big">{prompt}</p>
-        <button className="btn ghost" onClick={() => setPrompt(pick(PROMPTS))}>
-          Câu khác
-        </button>
-      </div>
+      </section>
     </div>
   )
 }

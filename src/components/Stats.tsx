@@ -62,98 +62,142 @@ export function Stats() {
   if (!s) return null
   const maxStatus = Math.max(1, ...s.byStatus.map((x) => x.n))
   const maxKind = Math.max(1, ...s.byKind.map((x) => x.n))
+  const weeksLabel = s.grid[0]?.[0] ? new Date(s.grid[0][0].ts).toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric' }) : ''
 
   return (
     <div className="stats">
-      <div className="tiles">
-        <div className="tile">
-          <b>{s.total}</b>
-          <span>ý tưởng</span>
+      <header className="title-row">
+        <div className="title-text">
+          <h1 className="page-title">Thống kê</h1>
+          <p className="lede">
+            {s.total ? (
+              <>
+                {s.streak > 1 ? `Đang có chuỗi ${s.streak} ngày liền ghi ý tưởng.` : s.week ? `${s.week} ý tưởng trong 7 ngày qua.` : 'Chưa ghi ý tưởng nào trong 7 ngày qua.'}
+                {s.avgIce !== null && ` ICE trung bình ${s.avgIce.toFixed(1)}.`}
+              </>
+            ) : (
+              'Số liệu sẽ có khi bạn ghi ý tưởng đầu tiên.'
+            )}
+          </p>
         </div>
-        <div className="tile">
-          <b>{s.week}</b>
-          <span>tuần này</span>
-        </div>
-        <div className="tile">
-          <b>🔥 {s.streak}</b>
-          <span>ngày liên tiếp</span>
-        </div>
-        <div className="tile">
-          <b>{s.shipped}</b>
-          <span>đã ra mắt</span>
-        </div>
-      </div>
+      </header>
 
-      <h3>Nhịp ghi ý tưởng (16 tuần)</h3>
-      <div className="heatmap" role="img" aria-label="Biểu đồ số ý tưởng theo ngày">
-        {s.grid.map((col, w) => (
-          <div key={w} className="hm-col">
-            {col.map((c) => (
-              <div
-                key={c.ts}
-                className="hm-cell"
-                data-l={c.n < 0 ? 'x' : Math.min(c.n, 4)}
-                title={c.n >= 0 ? `${new Date(c.ts).toLocaleDateString('vi-VN')}: ${c.n} ý tưởng` : ''}
-              />
+      <section className="kpis" aria-label="Tổng quan">
+        <div className="kpi">
+          <span className="kpi-label">Tổng số ý tưởng</span>
+          <span className="kpi-value num">{s.total}</span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-label">7 ngày qua</span>
+          <span className="kpi-value num">{s.week}</span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-label">Chuỗi ngày ghi</span>
+          <span className="kpi-value num">
+            {s.streak}
+            <small> ngày</small>
+          </span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-label">Đã ra mắt</span>
+          <span className="kpi-value num">{s.shipped}</span>
+        </div>
+      </section>
+
+      <div className="stats-grid">
+        <section className="panel heat-panel" aria-labelledby="heat-h">
+          <div className="panel-head">
+            <h2 id="heat-h">Nhịp ghi 16 tuần</h2>
+            <span className="muted">từ {weeksLabel}</span>
+          </div>
+          <div className="heatmap" role="img" aria-label={`Số ý tưởng mỗi ngày trong 16 tuần, tổng ${s.grid.flat().reduce((a, c) => a + Math.max(0, c.n), 0)}`}>
+            {s.grid.map((col, w) => (
+              <div key={w} className="hm-col">
+                {col.map((c) => (
+                  <div key={c.ts} className="hm-cell" data-l={c.n < 0 ? 'x' : Math.min(c.n, 4)} title={c.n >= 0 ? `${new Date(c.ts).toLocaleDateString('vi-VN')}: ${c.n} ý tưởng` : ''} />
+                ))}
+              </div>
             ))}
           </div>
-        ))}
-      </div>
+          <p className="heat-key muted">
+            Ít <span className="hm-cell" data-l="0" /> <span className="hm-cell" data-l="1" /> <span className="hm-cell" data-l="2" /> <span className="hm-cell" data-l="3" /> <span className="hm-cell" data-l="4" /> 4+ mỗi ngày
+          </p>
+        </section>
 
-      {s.top.length > 0 && (
-        <>
-          <h3>Nên làm trước (ICE cao nhất)</h3>
-          <ol className="top-list">
-            {s.top.map((i) => (
-              <li key={i.id}>
-                <a href={'#/idea/' + i.id}>{i.title}</a> <span className="ice">⚡ {iceScore(i)}</span>
-              </li>
-            ))}
-          </ol>
-        </>
-      )}
-
-      <h3>Theo trạng thái</h3>
-      <div className="bars">
-        {s.byStatus.map((x) => (
-          <div key={x.value} className="bar-row">
-            <span className="bar-label">{x.label}</span>
-            <div className="bar-track">
-              <div className="bar" style={{ width: `${(x.n / maxStatus) * 100}%`, background: x.color }} />
-            </div>
-            <span className="bar-n">{x.n}</span>
+        <section className="panel" aria-labelledby="top-ice-h">
+          <div className="panel-head">
+            <h2 id="top-ice-h">Nên làm trước</h2>
+            <span className="muted">theo ICE</span>
           </div>
-        ))}
-      </div>
+          {s.top.length ? (
+            <ol className="mini-list ranked">
+              {s.top.map((i) => (
+                <li key={i.id}>
+                  <a href={'#/idea/' + i.id}>{i.title}</a>
+                  <span className="num ice-figure">{iceScore(i)!.toFixed(1)}</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="panel-note">Chưa có ý tưởng đang sống nào được chấm đủ 3 mục ICE.</p>
+          )}
+        </section>
 
-      <h3>Theo loại</h3>
-      <div className="bars">
-        {s.byKind.map((x) => (
-          <div key={x.value} className="bar-row">
-            <span className="bar-label">
-              {x.emoji} {x.label}
-            </span>
-            <div className="bar-track">
-              <div className="bar" style={{ width: `${(x.n / maxKind) * 100}%` }} />
-            </div>
-            <span className="bar-n">{x.n}</span>
+        <section className="panel" aria-labelledby="by-status-h">
+          <div className="panel-head">
+            <h2 id="by-status-h">Theo giai đoạn</h2>
           </div>
-        ))}
-      </div>
+          <BarList rows={s.byStatus.map((x) => ({ key: x.value, label: x.label, n: x.n, tone: x.value === 'shipped' ? 'positive' : x.tone }))} max={maxStatus} total={s.total} />
+        </section>
 
-      {s.topTags.length > 0 && (
-        <>
-          <h3>Tag hay dùng</h3>
-          <div className="chips">
-            {s.topTags.map(([t, n]) => (
-              <span key={t} className="tag">
-                #{t} <span className="muted">{n}</span>
-              </span>
-            ))}
+        <section className="panel" aria-labelledby="by-kind-h">
+          <div className="panel-head">
+            <h2 id="by-kind-h">Theo loại</h2>
           </div>
-        </>
-      )}
-      {s.avgIce !== null && <p className="muted small">ICE trung bình: {s.avgIce}</p>}
+          <BarList rows={s.byKind.map((x) => ({ key: x.value, label: x.label, n: x.n }))} max={maxKind} total={s.total} />
+          <p className="panel-note bar-note">
+            Gõ <code>@app</code>, <code>@web</code> hay <code>@startup</code> khi ghi để chọn loại nhanh.
+          </p>
+        </section>
+
+        <section className="panel tags-panel" aria-labelledby="tags-h">
+          <div className="panel-head">
+            <h2 id="tags-h">Tag hay dùng</h2>
+          </div>
+          {s.topTags.length ? (
+            <p className="tag-cloud">
+              {s.topTags.map(([t, n]) => (
+                <span key={t} className="tag">
+                  #{t} <span className="num muted">{n}</span>
+                </span>
+              ))}
+            </p>
+          ) : (
+            <p className="panel-note">Gõ #tag khi ghi để gom các ý tưởng cùng chủ đề.</p>
+          )}
+        </section>
+      </div>
     </div>
+  )
+}
+
+function BarList({ rows, max, total }: { rows: { key: string; label: string; n: number; tone?: string }[]; max: number; total: number }) {
+  return (
+    <ul className="bar-list">
+      {rows.map((r) => (
+        <li key={r.key}>
+          <span className="bar-label">{r.label}</span>
+          <span className="bar-track" aria-hidden="true">
+            {r.n > 0 && <span className={'bar' + (r.tone ? ' tone-' + r.tone : '')} style={{ width: `${(r.n / max) * 100}%` }} />}
+          </span>
+          <span className={'bar-n num' + (r.n ? '' : ' none')}>{r.n}</span>
+        </li>
+      ))}
+      <li className="bar-total">
+        <span className="bar-label">Tổng</span>
+        <span />
+        <span className="bar-n num">{total}</span>
+      </li>
+    </ul>
   )
 }

@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { ArrowLeft, Copy, MapPin, Pin, Share2, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { db, deleteIdea, linkIdeas, removeAttachment, restoreIdea, updateIdea } from '../db'
 import { ideaToMarkdown } from '../lib/backup'
@@ -18,8 +19,9 @@ export function IdeaDetail({ id }: { id: string }) {
   if (idea === null) return null
   if (!idea)
     return (
-      <div className="empty">
-        <p>Không tìm thấy ý tưởng này.</p>
+      <div className="detail">
+        <h1 className="detail-missing">Không tìm thấy ý tưởng này</h1>
+        <p className="muted">Có thể nó đã bị xoá trên máy khác.</p>
         <button className="btn" onClick={() => go('/')}>
           Về danh sách
         </button>
@@ -54,107 +56,129 @@ export function IdeaDetail({ id }: { id: string }) {
     }
   }
 
+  const filled = CANVAS_FIELDS.filter((f) => idea.canvas[f.key].trim()).length
+  const done = idea.tasks.filter((t) => t.done).length
+
   return (
     <div className="detail">
       <div className="detail-bar">
-        <button className="btn ghost" onClick={back} aria-label="Quay lại">
-          ← Quay lại
+        <button className="btn ghost" onClick={back}>
+          <ArrowLeft size={16} strokeWidth={1.8} aria-hidden /> Ý tưởng
         </button>
         <div className="push" />
-        <button className={'btn ghost' + (idea.pinned ? ' on' : '')} onClick={() => set({ pinned: !idea.pinned })} title="Ghim">
-          📌
+        <button className={'icon-btn' + (idea.pinned ? ' on' : '')} onClick={() => set({ pinned: !idea.pinned })} aria-pressed={idea.pinned} aria-label={idea.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'} title={idea.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}>
+          <Pin size={17} strokeWidth={1.7} />
         </button>
-        <button className="btn ghost" onClick={share} title="Chia sẻ / chép">
-          ↗
+        <button className="icon-btn" onClick={share} aria-label="Chia sẻ hoặc chép Markdown" title="Chia sẻ / chép Markdown">
+          <Share2 size={17} strokeWidth={1.7} />
         </button>
-        <button className="btn ghost" onClick={duplicate} title="Nhân bản">
-          ⧉
-        </button>
-        <button className="btn ghost danger" onClick={remove} title="Xoá">
-          🗑
+        <button className="icon-btn" onClick={duplicate} aria-label="Nhân bản" title="Nhân bản">
+          <Copy size={17} strokeWidth={1.7} />
         </button>
       </div>
 
-      <EditableText className="title-input" value={idea.title} onSave={(title) => set({ title })} placeholder="Tiêu đề ý tưởng" multiline={false} />
+      <div className="detail-grid">
+        <div className="detail-main">
+          <h1 className="detail-title">
+            <EditableText value={idea.title} onSave={(title) => set({ title })} placeholder="Tiêu đề ý tưởng" multiline={false} ariaLabel="Tiêu đề" />
+          </h1>
+          <div className="meta-line">
+            <select className="quiet-select" value={idea.kind} onChange={(e) => set({ kind: e.target.value as Idea['kind'] })} aria-label="Loại">
+              {KINDS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.label}
+                </option>
+              ))}
+            </select>
+            <span>Ghi {timeAgo(idea.createdAt)}</span>
+            {idea.updatedAt - idea.createdAt > 60_000 && <span>sửa {timeAgo(idea.updatedAt)}</span>}
+            {idea.location && (
+              <a href={`https://www.openstreetmap.org/?mlat=${idea.location.lat}&mlon=${idea.location.lng}#map=16/${idea.location.lat}/${idea.location.lng}`} target="_blank" rel="noreferrer">
+                <MapPin size={13} strokeWidth={1.8} aria-hidden /> Nơi nảy ra
+              </a>
+            )}
+          </div>
 
-      <div className="row wrap gap">
-        <select value={idea.kind} onChange={(e) => set({ kind: e.target.value as Idea['kind'] })} aria-label="Loại">
-          {KINDS.map((k) => (
-            <option key={k.value} value={k.value}>
-              {k.emoji} {k.label}
-            </option>
-          ))}
-        </select>
-        <TagEditor tags={idea.tags} onChange={(tags) => set({ tags })} />
-      </div>
+          <div className="status-track" role="radiogroup" aria-label="Giai đoạn">
+            {STATUSES.map((s) => (
+              <button key={s.value} role="radio" aria-checked={idea.status === s.value} className={'status-opt' + (idea.status === s.value ? ' on tone-' + s.tone : '')} onClick={() => set({ status: s.value })}>
+                {s.label}
+              </button>
+            ))}
+          </div>
 
-      <div className="chips scroll status-picker">
-        {STATUSES.map((s) => (
-          <button
-            key={s.value}
-            className={'chip' + (idea.status === s.value ? ' on' : '')}
-            style={{ '--c': s.color } as React.CSSProperties}
-            onClick={() => set({ status: s.value })}
-          >
-            <span className="dot" style={{ background: s.color }} /> {s.label}
-          </button>
-        ))}
-      </div>
+          <EditableText className="body-input" value={idea.body} onSave={(body) => set({ body })} placeholder="Ghi chú thêm: chi tiết, ai cần nó, vì sao bạn nghĩ tới…" ariaLabel="Ghi chú" />
 
-      <EditableText className="body-input" value={idea.body} onSave={(body) => set({ body })} placeholder="Ghi chú thêm, chi tiết, cảm hứng…" />
+          <AttachmentList items={atts} onRemove={(i) => removeAttachment(atts[i].id)} />
+          <MediaTools
+            onText={(t) => set({ body: (idea.body ? idea.body.trimEnd() + ' ' : '') + t })}
+            onAttach={(a) => db.attachments.add({ ...a, id: uid(), ideaId: id, createdAt: Date.now() })}
+          />
 
-      <AttachmentList items={atts} onRemove={(i) => removeAttachment(atts[i].id)} />
-      <MediaTools
-        onText={(t) => set({ body: (idea.body ? idea.body.trimEnd() + ' ' : '') + t })}
-        onAttach={(a) => db.attachments.add({ ...a, id: uid(), ideaId: id, createdAt: Date.now() })}
-      />
+          <section className="block" aria-labelledby="tasks-h">
+            <div className="block-head">
+              <h2 id="tasks-h">Bước tiếp theo</h2>
+              {idea.tasks.length > 0 && (
+                <span className="muted num">
+                  {done}/{idea.tasks.length}
+                </span>
+              )}
+            </div>
+            <Tasks idea={idea} onChange={(tasks) => set({ tasks })} />
+          </section>
 
-      <Section title="⚡ Chấm điểm ICE" defaultOpen={iceScore(idea) !== null}>
-        <IceScorer scores={idea.scores} onChange={(key, v) => updateIdea(id, { [`scores.${key}`]: v })} />
-      </Section>
-
-      <Section title="🧭 Lean canvas" defaultOpen={Object.values(idea.canvas).some(Boolean)}>
-        <div className="canvas">
-          {CANVAS_FIELDS.map((f) => (
-            <label key={f.key} className="canvas-field">
-              <span className="label">{f.label}</span>
-              <EditableText value={idea.canvas[f.key]} placeholder={f.hint} ariaLabel={f.label} onSave={(v) => updateIdea(id, { [`canvas.${f.key}`]: v })} />
-            </label>
-          ))}
+          <details className="block canvas-block" open={filled > 0}>
+            <summary className="block-head">
+              <h2>Lean canvas</h2>
+              <span className="muted num">{filled}/6 ô</span>
+            </summary>
+            <div className="lean-canvas">
+              {CANVAS_FIELDS.map((f) => (
+                <label key={f.key} className="field">
+                  <span className="field-label">{f.label}</span>
+                  <EditableText className="field-input" value={idea.canvas[f.key]} placeholder={f.hint} ariaLabel={f.label} onSave={(v) => updateIdea(id, { [`canvas.${f.key}`]: v })} />
+                </label>
+              ))}
+            </div>
+          </details>
         </div>
-      </Section>
 
-      <Section title={`☑ Bước tiếp theo${idea.tasks.length ? ` (${idea.tasks.filter((t) => t.done).length}/${idea.tasks.length})` : ''}`} defaultOpen>
-        <Tasks idea={idea} onChange={(tasks) => set({ tasks })} />
-      </Section>
+        <aside className="detail-side">
+          <section className="panel" aria-labelledby="ice-h">
+            <div className="panel-head">
+              <h2 id="ice-h">Điểm ICE</h2>
+            </div>
+            <IceScorer scores={idea.scores} onChange={(key, v) => updateIdea(id, { [`scores.${key}`]: v })} />
+          </section>
+          <section className="panel" aria-labelledby="tags-h">
+            <div className="panel-head">
+              <h2 id="tags-h">Tag</h2>
+            </div>
+            <TagEditor tags={idea.tags} onChange={(tags) => set({ tags })} />
+          </section>
+          <section className="panel" aria-labelledby="links-h">
+            <div className="panel-head">
+              <h2 id="links-h">Liên kết tham khảo</h2>
+              {idea.links.length > 0 && <span className="muted num">{idea.links.length}</span>}
+            </div>
+            <Links links={idea.links} onChange={(links) => set({ links })} />
+          </section>
+          <section className="panel" aria-labelledby="rel-h">
+            <div className="panel-head">
+              <h2 id="rel-h">Ý tưởng liên quan</h2>
+              {idea.related.length > 0 && <span className="muted num">{idea.related.length}</span>}
+            </div>
+            <Related idea={idea} />
+          </section>
+        </aside>
 
-      <Section title="🔗 Liên kết & tham khảo" defaultOpen={idea.links.length > 0}>
-        <Links links={idea.links} onChange={(links) => set({ links })} />
-      </Section>
-
-      <Section title={`🕸 Ý tưởng liên quan${idea.related.length ? ` (${idea.related.length})` : ''}`} defaultOpen={idea.related.length > 0}>
-        <Related idea={idea} />
-      </Section>
-
-      <div className="meta-foot muted small">
-        <span>Tạo {new Date(idea.createdAt).toLocaleString('vi-VN')}</span>
-        <span>Sửa {timeAgo(idea.updatedAt)}</span>
-        {idea.location && (
-          <a href={`https://www.openstreetmap.org/?mlat=${idea.location.lat}&mlon=${idea.location.lng}#map=16/${idea.location.lat}/${idea.location.lng}`} target="_blank" rel="noreferrer">
-            📍 Nơi nảy ra ý tưởng (±{idea.location.accuracy}m)
-          </a>
-        )}
+        <div className="delete-idea">
+          <button className="text-btn danger" onClick={remove}>
+            <Trash2 size={15} strokeWidth={1.8} aria-hidden /> Xoá ý tưởng này
+          </button>
+        </div>
       </div>
     </div>
-  )
-}
-
-function Section({ title, defaultOpen, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
-  return (
-    <details className="section" open={defaultOpen}>
-      <summary>{title}</summary>
-      <div className="section-body">{children}</div>
-    </details>
   )
 }
 
@@ -171,7 +195,7 @@ function TagEditor({ tags, onChange }: { tags: string[]; onChange: (t: string[])
         <span key={t} className="tag">
           #{t}
           <button aria-label={`Bỏ tag ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))}>
-            ×
+            <X size={12} strokeWidth={2} />
           </button>
         </span>
       ))}
@@ -185,7 +209,7 @@ function TagEditor({ tags, onChange }: { tags: string[]; onChange: (t: string[])
           } else if (e.key === 'Backspace' && !v && tags.length) onChange(tags.slice(0, -1))
         }}
         onBlur={add}
-        placeholder="+ tag"
+        placeholder={tags.length ? 'Thêm tag' : 'Gõ tag rồi Enter'}
         aria-label="Thêm tag"
       />
     </div>
@@ -193,38 +217,40 @@ function TagEditor({ tags, onChange }: { tags: string[]; onChange: (t: string[])
 }
 
 const ICE_LABELS: { key: keyof Scores; label: string; hint: string }[] = [
-  { key: 'impact', label: 'Impact', hint: 'Tác động / giá trị nếu thành công' },
-  { key: 'confidence', label: 'Confidence', hint: 'Mức tự tin rằng nó sẽ hiệu quả' },
-  { key: 'ease', label: 'Ease', hint: 'Dễ làm (10 = vài ngày là xong)' },
+  { key: 'impact', label: 'Tác động', hint: 'Giá trị nếu thành công' },
+  { key: 'confidence', label: 'Tự tin', hint: 'Khả năng nó hiệu quả' },
+  { key: 'ease', label: 'Dễ làm', hint: '10 là vài ngày xong' },
 ]
 
 function IceScorer({ scores, onChange }: { scores: Scores; onChange: (key: keyof Scores, v: number) => void }) {
   const total = iceScore({ scores })
   return (
-    <div className="ice-scorer">
+    <div className="ice">
+      <p className="ice-total">
+        <span className={'ice-figure big num' + (total === null ? ' none' : '')}>{total === null ? '—' : total.toFixed(1)}</span>
+        <span className="muted">{total === null ? 'Chấm đủ 3 mục để có điểm' : 'trên 10, dùng để xếp hạng'}</span>
+      </p>
       {ICE_LABELS.map((f) => (
         <label key={f.key} className="ice-row">
           <span className="ice-name">
             {f.label}
-            <span className="muted small">{f.hint}</span>
+            <span className="muted">{f.hint}</span>
           </span>
-          <input type="range" min={0} max={10} value={scores[f.key]} onChange={(e) => onChange(f.key, +e.target.value)} />
-          <span className="ice-val">{scores[f.key] || '–'}</span>
+          <span className={'ice-val num' + (scores[f.key] ? '' : ' none')}>{scores[f.key] || '—'}</span>
+          <input type="range" min={0} max={10} value={scores[f.key]} onChange={(e) => onChange(f.key, +e.target.value)} aria-label={f.label} />
         </label>
       ))}
-      <div className="ice-total">
-        Điểm ICE: <b>{total ?? 'chưa đủ'}</b>
-        <span className="muted small"> / 10 — dùng để xếp hạng nên làm cái nào trước</span>
-      </div>
     </div>
   )
 }
 
+const TASK_SUGGESTIONS = ['Tìm 3 đối thủ', 'Hỏi 5 người xem họ có cần không', 'Làm một landing page', 'Vẽ wireframe']
+
 function Tasks({ idea, onChange }: { idea: Idea; onChange: (t: Idea['tasks']) => void }) {
   const [v, setV] = useState('')
-  const add = () => {
-    if (!v.trim()) return
-    onChange([...idea.tasks, { id: uid(), text: v.trim(), done: false }])
+  const add = (text: string) => {
+    if (!text.trim()) return
+    onChange([...idea.tasks, { id: uid(), text: text.trim(), done: false }])
     setV('')
   }
   return (
@@ -232,9 +258,9 @@ function Tasks({ idea, onChange }: { idea: Idea; onChange: (t: Idea['tasks']) =>
       {idea.tasks.map((t) => (
         <div key={t.id} className={'task' + (t.done ? ' done' : '')}>
           <input type="checkbox" checked={t.done} onChange={() => onChange(idea.tasks.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x)))} aria-label={t.text} />
-          <EditableText value={t.text} multiline={false} onSave={(text) => onChange(idea.tasks.map((x) => (x.id === t.id ? { ...x, text } : x)))} />
-          <button className="icon-btn" aria-label="Xoá việc" onClick={() => onChange(idea.tasks.filter((x) => x.id !== t.id))}>
-            ×
+          <EditableText value={t.text} multiline={false} ariaLabel="Nội dung việc" onSave={(text) => onChange(idea.tasks.map((x) => (x.id === t.id ? { ...x, text } : x)))} />
+          <button className="icon-btn small" aria-label="Xoá việc" onClick={() => onChange(idea.tasks.filter((x) => x.id !== t.id))}>
+            <X size={14} strokeWidth={1.8} />
           </button>
         </div>
       ))}
@@ -242,22 +268,26 @@ function Tasks({ idea, onChange }: { idea: Idea; onChange: (t: Idea['tasks']) =>
         className="add-row"
         onSubmit={(e) => {
           e.preventDefault()
-          add()
+          add(v)
         }}
       >
-        <input value={v} onChange={(e) => setV(e.target.value)} placeholder="VD: Hỏi 5 người xem họ có cần không" aria-label="Thêm việc" />
-        <button className="btn" type="submit">
+        <input value={v} onChange={(e) => setV(e.target.value)} placeholder="Việc nhỏ nhất để tiến thêm một bước" aria-label="Thêm việc" />
+        <button className="btn" type="submit" disabled={!v.trim()}>
           Thêm
         </button>
       </form>
       {idea.tasks.length === 0 && (
-        <div className="chips">
-          {['Tìm 3 đối thủ', 'Phỏng vấn 5 người dùng', 'Làm landing page', 'Vẽ wireframe'].map((s) => (
-            <button key={s} className="chip" onClick={() => onChange([...idea.tasks, { id: uid(), text: s, done: false }])}>
-              + {s}
-            </button>
+        <p className="suggest">
+          Gợi ý:{' '}
+          {TASK_SUGGESTIONS.map((s, i) => (
+            <span key={s}>
+              <button className="text-btn" onClick={() => add(s)}>
+                {s}
+              </button>
+              {i < TASK_SUGGESTIONS.length - 1 ? ' · ' : ''}
+            </span>
           ))}
-        </div>
+        </p>
       )}
     </div>
   )
@@ -270,10 +300,10 @@ function Links({ links, onChange }: { links: string[]; onChange: (l: string[]) =
       {links.map((l) => (
         <div key={l} className="link-row">
           <a href={/^https?:\/\//.test(l) ? l : 'https://' + l} target="_blank" rel="noreferrer">
-            {l.replace(/^https?:\/\//, '')}
+            {l.replace(/^https?:\/\/(www\.)?/, '')}
           </a>
-          <button className="icon-btn" aria-label="Xoá liên kết" onClick={() => onChange(links.filter((x) => x !== l))}>
-            ×
+          <button className="icon-btn small" aria-label="Xoá liên kết" onClick={() => onChange(links.filter((x) => x !== l))}>
+            <X size={14} strokeWidth={1.8} />
           </button>
         </div>
       ))}
@@ -286,8 +316,8 @@ function Links({ links, onChange }: { links: string[]; onChange: (l: string[]) =
           setV('')
         }}
       >
-        <input value={v} onChange={(e) => setV(e.target.value)} placeholder="Dán link đối thủ, bài viết, cảm hứng…" inputMode="url" aria-label="Thêm liên kết" />
-        <button className="btn" type="submit">
+        <input value={v} onChange={(e) => setV(e.target.value)} placeholder="Dán link đối thủ, bài viết…" inputMode="url" aria-label="Thêm liên kết" />
+        <button className="btn" type="submit" disabled={!v.trim()}>
           Thêm
         </button>
       </form>
@@ -301,7 +331,7 @@ function Related({ idea }: { idea: Idea }) {
   const linked = all.filter((i) => idea.related.includes(i.id))
   const suggestions = useMemo(() => {
     const others = all.filter((i) => i.id !== idea.id && !idea.related.includes(i.id))
-    if (q.trim()) return others.filter((i) => matchesQuery(i, q)).slice(0, 6)
+    if (q.trim()) return others.filter((i) => matchesQuery(i, q)).slice(0, 5)
     // gợi ý theo tag chung / từ chung trong tiêu đề
     const words = new Set(fold(idea.title).split(/\W+/).filter((w) => w.length > 3))
     return others
@@ -311,7 +341,7 @@ function Related({ idea }: { idea: Idea }) {
       }))
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
-      .slice(0, 4)
+      .slice(0, 3)
       .map((x) => x.i)
   }, [all, idea, q])
 
@@ -319,24 +349,24 @@ function Related({ idea }: { idea: Idea }) {
     <div className="related">
       {linked.map((i) => (
         <div key={i.id} className="link-row">
-          <a href={'#/idea/' + i.id}>
-            {kindMeta(i.kind).emoji} {i.title}
-          </a>
-          <button className="icon-btn" aria-label="Bỏ liên kết" onClick={() => linkIdeas(idea.id, i.id, false)}>
-            ×
+          <a href={'#/idea/' + i.id}>{i.title}</a>
+          <span className="muted">{kindMeta(i.kind).label}</span>
+          <button className="icon-btn small" aria-label="Bỏ liên kết" onClick={() => linkIdeas(idea.id, i.id, false)}>
+            <X size={14} strokeWidth={1.8} />
           </button>
         </div>
       ))}
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm ý tưởng để nối…" aria-label="Tìm ý tưởng liên quan" />
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm ý tưởng để nối" aria-label="Tìm ý tưởng liên quan" />
       {suggestions.length > 0 && (
-        <div className="chips">
-          {!q && <span className="muted small">Gợi ý:</span>}
+        <ul className="suggest-list" aria-label={q ? 'Kết quả' : 'Gợi ý'}>
           {suggestions.map((i) => (
-            <button key={i.id} className="chip" onClick={() => (linkIdeas(idea.id, i.id, true), setQ(''))}>
-              + {kindMeta(i.kind).emoji} {i.title}
-            </button>
+            <li key={i.id}>
+              <button className="text-btn" onClick={() => (linkIdeas(idea.id, i.id, true), setQ(''))}>
+                Nối với “{i.title}”
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   )

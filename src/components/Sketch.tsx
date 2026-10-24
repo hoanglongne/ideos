@@ -1,6 +1,7 @@
+import { Eraser, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-const COLORS = ['#111111', '#e5484d', '#3e9bff', '#30a46c', '#f5a524']
+const COLORS = ['#1f201d', '#1b6e66', '#b42318', '#8c8c88']
 
 /** Bảng vẽ nhanh để phác giao diện / sơ đồ. Trả về PNG. */
 export function Sketch({ onDone, onCancel }: { onDone: (b: Blob) => void; onCancel: () => void }) {
@@ -82,13 +83,13 @@ export function Sketch({ onDone, onCancel }: { onDone: (b: Blob) => void; onCanc
               onClick={() => setColor(c)}
             />
           ))}
-          <button className={'swatch eraser' + (color === '#ffffff' ? ' on' : '')} aria-label="Tẩy" onClick={() => setColor('#ffffff')}>
-            ⌫
+          <button className={'swatch eraser' + (color === '#ffffff' ? ' on' : '')} aria-label="Tẩy" aria-pressed={color === '#ffffff'} onClick={() => setColor('#ffffff')}>
+            <Eraser size={14} strokeWidth={1.8} />
           </button>
         </div>
         <input type="range" min={2} max={20} value={width} onChange={(e) => setWidth(+e.target.value)} aria-label="Độ dày nét" />
-        <button className="btn ghost" onClick={undo}>
-          ↶
+        <button className="icon-btn" onClick={undo} aria-label="Hoàn tác nét vừa vẽ" title="Hoàn tác">
+          <Undo2 size={17} strokeWidth={1.7} />
         </button>
         <button className="btn primary" onClick={done}>
           Xong

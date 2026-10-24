@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react'
 import { clearAll, db, onLocalChange } from '../db'
 import { pendingCount, syncOnce } from './engine'
 import { supabaseRemote } from './supabase'
+import { IS_DEMO } from '../lib/demo'
 
 export type SyncStatus = 'disabled' | 'signed-out' | 'idle' | 'syncing' | 'error' | 'offline'
 
@@ -159,7 +160,7 @@ export async function initSync() {
     setInterval(() => document.visibilityState === 'visible' && requestSync(0), 5 * 60_000)
   }
 
-  const cfg = readConfig()
+  const cfg = IS_DEMO ? null : readConfig()
   if (!cfg) {
     set({ status: 'disabled' })
     return

@@ -59,24 +59,33 @@ export interface Attachment {
   duration?: number
 }
 
-export const KINDS: { value: IdeaKind; label: string; emoji: string }[] = [
-  { value: 'web', label: 'Web', emoji: '🌐' },
-  { value: 'app', label: 'App', emoji: '📱' },
-  { value: 'startup', label: 'Startup', emoji: '🚀' },
-  { value: 'product', label: 'Sản phẩm', emoji: '📦' },
-  { value: 'feature', label: 'Tính năng', emoji: '🧩' },
-  { value: 'other', label: 'Khác', emoji: '💡' },
+export const KINDS: { value: IdeaKind; label: string }[] = [
+  { value: 'web', label: 'Web' },
+  { value: 'app', label: 'App' },
+  { value: 'startup', label: 'Startup' },
+  { value: 'product', label: 'Sản phẩm' },
+  { value: 'feature', label: 'Tính năng' },
+  { value: 'other', label: 'Khác' },
 ]
 
-export const STATUSES: { value: IdeaStatus; label: string; color: string }[] = [
-  { value: 'spark', label: 'Mới nảy ra', color: '#ffc94d' },
-  { value: 'exploring', label: 'Đang nghĩ', color: '#7cc4ff' },
-  { value: 'validating', label: 'Kiểm chứng', color: '#b892ff' },
-  { value: 'building', label: 'Đang làm', color: '#5fd39a' },
-  { value: 'shipped', label: 'Đã ra mắt', color: '#3ecf8e' },
-  { value: 'parked', label: 'Để sau', color: '#9aa3b2' },
-  { value: 'dropped', label: 'Bỏ', color: '#ff7a7a' },
+/**
+ * Trạng thái là một chuỗi tiến trình, không phải 7 nhãn màu:
+ * neutral = chưa động tới, accent = đang tiến hành, positive = đã ra mắt, muted = đã gác lại.
+ */
+export type StatusTone = 'neutral' | 'accent' | 'positive' | 'muted'
+
+export const STATUSES: { value: IdeaStatus; label: string; tone: StatusTone }[] = [
+  { value: 'spark', label: 'Mới nảy ra', tone: 'neutral' },
+  { value: 'exploring', label: 'Đang nghĩ', tone: 'accent' },
+  { value: 'validating', label: 'Kiểm chứng', tone: 'accent' },
+  { value: 'building', label: 'Đang làm', tone: 'accent' },
+  { value: 'shipped', label: 'Đã ra mắt', tone: 'positive' },
+  { value: 'parked', label: 'Để sau', tone: 'muted' },
+  { value: 'dropped', label: 'Đã bỏ', tone: 'muted' },
 ]
+
+/** Các trạng thái còn "sống": được đưa vào hàng chờ ôn lại. */
+export const REVIEWABLE: IdeaStatus[] = ['spark', 'exploring', 'validating', 'building', 'parked']
 
 export const CANVAS_FIELDS: { key: keyof Canvas; label: string; hint: string }[] = [
   { key: 'problem', label: 'Vấn đề', hint: 'Nỗi đau cụ thể là gì? Ai đang chịu?' },

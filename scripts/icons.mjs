@@ -13,7 +13,7 @@ async function render(size, file, { maskable = false, inset = 0 } = {}) {
   await page.setViewportSize({ width: size, height: size })
   const pad = Math.round(size * inset)
   await page.setContent(
-    `<html><body style="margin:0;background:${maskable ? '#0f1115' : 'transparent'}">
+    `<html><body style="margin:0;background:${maskable ? '#1f201d' : 'transparent'}">
       <div style="padding:${pad}px;width:${size}px;height:${size}px;box-sizing:border-box">
         ${svg.replace('<svg ', `<svg width="${size - pad * 2}" height="${size - pad * 2}" `)}
       </div></body></html>`,

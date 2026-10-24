@@ -36,6 +36,18 @@ PWA offline-first: cài lên màn hình chính, mở tức thì, ghi được c�
 - Xin quyền lưu trữ bền vững để trình duyệt không tự xoá dữ liệu
 - Sáng/tối, phím tắt `N` / `/` / `Ctrl+Enter` / `Esc`, báo khi có bản cập nhật
 
+## Giao diện
+
+Thiết kế theo quy trình app-screen của [taste-skill](https://github.com/Leonxlnx/taste-skill) (style *editorial greeting*)
+và chế độ *Operate* của [impeccable](https://github.com/pbakaus/impeccable):
+
+- Mỗi màn hình trả lời một câu hỏi trước tiên. Màn chính mở bằng lời chào dựng từ dữ liệu ("Thứ Bảy, 5 ý tưởng mới tuần này.")
+  và **dải tiến trình**: số ý tưởng ở từng giai đoạn, đồng thời là bộ lọc chính.
+- Màu chỉ nằm trên dữ liệu: teal cho các giai đoạn đang làm, điểm ICE, nhịp ghi; khung giao diện là đen trắng và một tông giấy.
+- Không emoji, không gradient, không bóng đổ cho thứ đứng yên; icon nét mảnh (lucide), chữ số tabular để cột số thẳng hàng.
+- Font tự host để chạy offline: **Plus Jakarta Sans** (có dấu tiếng Việt và chữ số tabular) và **Newsreader** cho lời chào.
+- `?demo=1` mở bản xem thử với dữ liệu mẫu trong một kho riêng, không đụng dữ liệu thật và không đồng bộ.
+
 ## Chạy
 
 ```bash
