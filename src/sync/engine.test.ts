@@ -170,7 +170,7 @@ describe('syncOnce', () => {
     await syncOnce(B, server.remote('u1', { failDownloads: new Set(['p1']) }))
     expect(await B.attachments.get('p1')).toBeUndefined()
     // con trỏ không được vượt qua hàng lỗi
-    expect(await B.meta.get('sync.attsCursor')).toBeUndefined()
+    expect(await B.meta.get('sync.attsSeq')).toBeUndefined()
     await syncOnce(B, server.remote('u1'))
     expect(await (await B.attachments.get('p1'))!.blob.text()).toBe('img')
   })
