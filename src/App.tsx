@@ -9,7 +9,7 @@ import { Mark } from './components/Mark'
 import { Review } from './components/Review'
 import { Settings, type InstallPromptEvent } from './components/Settings'
 import { Stats } from './components/Stats'
-import { SyncStatus } from './components/SyncPanel'
+import { SyncStatus, takePairLink } from './components/SyncPanel'
 import { db } from './db'
 import { go, useRoute, type Route } from './lib/router'
 import { useSettings } from './lib/settings'
@@ -27,6 +27,8 @@ function takeLaunchParams(): { open: boolean; text?: string } {
 }
 
 const LAUNCH = takeLaunchParams()
+// mở bằng link ghép máy → vào thẳng Cài đặt với mã đã điền sẵn
+takePairLink()
 
 const NAV: { route: Route['name']; href: string; label: string; short: string; Icon: typeof Lightbulb }[] = [
   { route: 'list', href: '#/', label: 'Ý tưởng', short: 'Ý tưởng', Icon: Lightbulb },

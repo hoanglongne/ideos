@@ -1,34 +1,44 @@
-import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { useSyncExternalStore } from 'react'
 import { clearAll, db, onLocalChange } from '../db'
-import { pendingCount, syncOnce } from './engine'
-import { supabaseRemote } from './supabase'
 import { IS_DEMO } from '../lib/demo'
+import { checkServer, cloudflareRemote, createVault, deleteVault, SyncHttpError, vaultHead } from './cloudflare'
+import { deriveKeys, formatCode, newSecret, parseCode, toBase64, fromBase64, type VaultKeys } from './crypto'
+import { pendingCount, syncOnce } from './engine'
 
-export type SyncStatus = 'disabled' | 'signed-out' | 'idle' | 'syncing' | 'error' | 'offline'
+/**
+ * unavailable: địa chỉ này không có máy chủ Ideos (vd. app deploy ở nơi khác, hoặc bản mẫu)
+ * unpaired:    có máy chủ nhưng máy này chưa bật đồng bộ
+ */
+export type SyncStatus = 'checking' | 'unavailable' | 'unpaired' | 'idle' | 'syncing' | 'error' | 'offline'
 
 export interface SyncState {
   status: SyncStatus
-  configFromEnv: boolean
-  url: string
-  email: string | null
+  /** Mã đồng bộ đang dùng, dạng XXXX-XXXX-…; null khi chưa ghép */
+  code: string | null
   lastSyncAt: number | null
   pending: number
   error: string | null
 }
 
-const CONFIG_KEY = 'ideos.supabase'
+const SECRET_KEY = 'ideos.vault'
 const LAST_KEY = 'ideos.lastSyncAt'
-const ENV_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const ENV_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+const POLL_MS = 20_000
 
-function readConfig(): { url: string; key: string } | null {
-  if (ENV_URL && ENV_KEY) return { url: ENV_URL, key: ENV_KEY }
+function readSecret(): Uint8Array | null {
   try {
-    const c = JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null')
-    return c?.url && c?.key ? c : null
+    const v = localStorage.getItem(SECRET_KEY)
+    return v ? fromBase64(v) : null
   } catch {
     return null
+  }
+}
+
+function writeSecret(secret: Uint8Array | null) {
+  try {
+    if (secret) localStorage.setItem(SECRET_KEY, toBase64(secret))
+    else localStorage.removeItem(SECRET_KEY)
+  } catch {
+    /* chế độ riêng tư: mã chỉ sống trong phiên này */
   }
 }
 
@@ -42,15 +52,7 @@ function readLast() {
 
 /* ---------- store ---------- */
 
-let state: SyncState = {
-  status: 'disabled',
-  configFromEnv: !!(ENV_URL && ENV_KEY),
-  url: readConfig()?.url ?? '',
-  email: null,
-  lastSyncAt: readLast(),
-  pending: 0,
-  error: null,
-}
+let state: SyncState = { status: 'checking', code: null, lastSyncAt: readLast(), pending: 0, error: null }
 const listeners = new Set<() => void>()
 function set(patch: Partial<SyncState>) {
   state = { ...state, ...patch }
@@ -69,13 +71,12 @@ export function useSync() {
 
 /* ---------- vòng đồng bộ ---------- */
 
-let client: SupabaseClient | null = null
-let userId: string | null = null
-let channel: RealtimeChannel | null = null
+let keys: VaultKeys | null = null
 let timer: ReturnType<typeof setTimeout> | undefined
 let running = false
 let again = false
 let failures = 0
+let lastHead = -1
 
 const refreshPending = async () => set({ pending: await pendingCount(db) })
 
@@ -84,8 +85,15 @@ export function requestSync(delay = 0) {
   timer = setTimeout(runSync, delay)
 }
 
+/** Kho không còn (bị xoá từ máy khác) hoặc mã không còn hợp lệ: thử lại cũng vô ích. */
+const isGone = (e: unknown) => e instanceof SyncHttpError && (e.status === 404 || e.status === 401)
+export const GONE = 'Dữ liệu đồng bộ của mã này đã bị xoá trên máy chủ, có thể từ một máy khác. Ngắt đồng bộ ở đây rồi bật lại để tạo mã mới.'
+
+const errorText = (e: unknown) =>
+  isGone(e) ? GONE : e instanceof SyncHttpError ? e.message : e instanceof TypeError ? 'Không kết nối được máy chủ đồng bộ' : e instanceof Error ? e.message : String(e)
+
 async function runSync() {
-  if (!client || !userId) return
+  if (!keys) return
   if (running) {
     again = true
     return
@@ -97,7 +105,8 @@ async function runSync() {
   running = true
   set({ status: 'syncing', error: null })
   try {
-    await syncOnce(db, supabaseRemote(client, userId))
+    await syncOnce(db, cloudflareRemote(keys))
+    lastHead = await vaultHead(keys)
     failures = 0
     const now = Date.now()
     try {
@@ -108,9 +117,9 @@ async function runSync() {
     set({ status: 'idle', lastSyncAt: now })
   } catch (e) {
     failures++
-    set({ status: navigator.onLine ? 'error' : 'offline', error: e instanceof Error ? e.message : String(e) })
+    set({ status: navigator.onLine ? 'error' : 'offline', error: errorText(e) })
     // thử lại lùi dần: 15s, 30s, 60s… tối đa 5 phút
-    requestSync(Math.min(300_000, 15_000 * 2 ** (failures - 1)))
+    if (!isGone(e)) requestSync(Math.min(300_000, 15_000 * 2 ** (failures - 1)))
   } finally {
     running = false
     await refreshPending()
@@ -121,31 +130,26 @@ async function runSync() {
   }
 }
 
-function subscribeRealtime() {
-  if (!client || !userId) return
-  channel = client.channel('ideos-' + userId)
-  for (const table of ['ideas', 'attachments'])
-    channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` }, () => requestSync(800))
-  channel.subscribe()
+/** Hỏi nhẹ máy chủ xem có gì mới (chỉ đọc một số), có thì mới đồng bộ. */
+async function poll() {
+  if (!keys || running || document.visibilityState !== 'visible' || !navigator.onLine || state.error === GONE) return
+  try {
+    const head = await vaultHead(keys)
+    if (head !== lastHead || state.pending > 0) requestSync(0)
+  } catch (e) {
+    if (isGone(e)) set({ status: 'error', error: GONE })
+  }
 }
 
-async function setUser(id: string | null, email: string | null) {
-  if (id === userId) return
-  if (channel) {
-    await client?.removeChannel(channel)
-    channel = null
-  }
-  userId = id
-  set({ email, status: id ? 'idle' : 'signed-out' })
-  if (id) {
-    subscribeRealtime()
-    requestSync(0)
-  }
+async function use(secret: Uint8Array) {
+  keys = await deriveKeys(secret)
+  lastHead = -1
+  set({ code: formatCode(secret), status: 'idle', error: null })
 }
 
 let started = false
 
-/** Khởi động đồng bộ nếu đã cấu hình Supabase. An toàn khi gọi nhiều lần. */
+/** Khởi động đồng bộ. An toàn khi gọi nhiều lần. */
 export async function initSync() {
   refreshPending()
   if (!started) {
@@ -154,80 +158,74 @@ export async function initSync() {
       refreshPending()
       requestSync(2000)
     })
-    window.addEventListener('online', () => requestSync(0))
-    window.addEventListener('offline', () => state.status !== 'disabled' && state.status !== 'signed-out' && set({ status: 'offline' }))
-    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && requestSync(0))
-    setInterval(() => document.visibilityState === 'visible' && requestSync(0), 5 * 60_000)
+    window.addEventListener('online', () => {
+      if (keys) requestSync(0)
+      else if (state.status === 'unavailable' || state.status === 'checking') probe()
+    })
+    window.addEventListener('offline', () => keys && set({ status: 'offline' }))
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && keys && requestSync(0))
+    setInterval(poll, POLL_MS)
   }
-
-  const cfg = IS_DEMO ? null : readConfig()
-  if (!cfg) {
-    set({ status: 'disabled' })
+  if (IS_DEMO) {
+    set({ status: 'unavailable', code: null })
     return
   }
-  const { createClient } = await import('@supabase/supabase-js')
-  client = createClient(cfg.url, cfg.key, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'ideos.auth' },
-  })
-  set({ url: cfg.url, status: 'signed-out' })
-  client.auth.onAuthStateChange((_event, session) => {
-    // tránh gọi API Supabase ngay trong callback (khuyến nghị của supabase-js)
-    setTimeout(() => setUser(session?.user.id ?? null, session?.user.email ?? null), 0)
-  })
-  const { data } = await client.auth.getSession()
-  await setUser(data.session?.user.id ?? null, data.session?.user.email ?? null)
+  const secret = readSecret()
+  if (secret) {
+    await use(secret)
+    requestSync(0)
+  } else await probe()
+}
+
+async function probe() {
+  set({ status: 'checking' })
+  if (!navigator.onLine) return // sự kiện 'online' sẽ gọi lại
+  set({ status: (await checkServer()) ? 'unpaired' : 'unavailable' })
 }
 
 /* ---------- thao tác từ giao diện ---------- */
 
-export async function saveConfig(url: string, key: string) {
-  url = url.trim().replace(/\/+$/, '')
-  // http chỉ cho localhost (Supabase chạy local bằng `supabase start`)
-  if (!/^(https:\/\/.+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/.test(url)) throw new Error('URL phải bắt đầu bằng https://')
-  if (!key.trim()) throw new Error('Thiếu API key')
-  localStorage.setItem(CONFIG_KEY, JSON.stringify({ url, key: key.trim() }))
-  await disconnect()
-  await initSync()
+/** Bật đồng bộ lần đầu: tạo mã mới cho kho dữ liệu của bạn. */
+export async function startNewVault() {
+  const secret = newSecret()
+  const k = await deriveKeys(secret)
+  await createVault(k)
+  writeSecret(secret)
+  await use(secret)
+  requestSync(0)
 }
 
-async function disconnect() {
-  if (channel) await client?.removeChannel(channel)
-  channel = null
-  userId = null
-  client = null
+/** Ghép máy này vào kho đã có, bằng mã (hoặc link) từ máy khác. */
+export async function joinVault(input: string) {
+  const secret = parseCode(input)
+  if (!secret) throw new Error('Mã chưa đúng. Mã gồm 26 ký tự, dạng XXXX-XXXX-…')
+  const k = await deriveKeys(secret)
+  try {
+    await vaultHead(k)
+  } catch (e) {
+    if (e instanceof SyncHttpError && e.status === 404) throw new Error('Không có dữ liệu nào ứng với mã này. Kiểm tra lại từng ký tự.')
+    throw e
+  }
+  writeSecret(secret)
+  await use(secret)
+  requestSync(0)
 }
 
-export async function forgetConfig() {
-  await client?.auth.signOut().catch(() => {})
-  await disconnect()
-  localStorage.removeItem(CONFIG_KEY)
-  set({ status: 'disabled', email: null, url: '' })
-}
-
-export async function signIn(email: string, password: string) {
-  if (!client) throw new Error('Chưa cấu hình Supabase')
-  const { error } = await client.auth.signInWithPassword({ email: email.trim(), password })
-  if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Sai email hoặc mật khẩu' : error.message)
-}
-
-/** Trả về true nếu cần xác nhận email trước khi đăng nhập. */
-export async function signUp(email: string, password: string): Promise<boolean> {
-  if (!client) throw new Error('Chưa cấu hình Supabase')
-  const { data, error } = await client.auth.signUp({
-    email: email.trim(),
-    password,
-    options: { emailRedirectTo: location.origin + location.pathname },
-  })
-  if (error) throw new Error(error.message)
-  return !data.session
-}
-
-export async function signOut(wipeLocal: boolean) {
-  if (!client) return
-  // đẩy nốt thay đổi trước khi thoát
-  if (!wipeLocal && navigator.onLine) await runSync().catch(() => {})
-  await client.auth.signOut()
-  await setUser(null, null)
+/**
+ * Ngắt đồng bộ trên máy này.
+ * wipeLocal: xoá ý tưởng trên máy này. wipeServer: xoá luôn kho trên máy chủ (mọi máy khác mất đồng bộ).
+ */
+export async function leaveVault({ wipeLocal, wipeServer }: { wipeLocal: boolean; wipeServer: boolean }) {
+  if (!keys) return
+  const gone = state.error === GONE
+  if (!wipeLocal && !wipeServer && navigator.onLine && !gone) await runSync().catch(() => {})
+  if (wipeServer && !gone) await deleteVault(keys)
+  keys = null
+  clearTimeout(timer)
+  writeSecret(null)
   if (wipeLocal) await clearAll(false)
+  else await db.meta.clear() // lần ghép sau sẽ gộp lại toàn bộ
+  set({ code: null, error: null })
   await refreshPending()
+  await probe()
 }

@@ -2274,3 +2274,44 @@ details[open] > summary.block-head {
 .sheet-footer .btn.primary {
   margin-left: auto;
 }
+.set-item-block {
+  display: grid;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+}
+.vault-code {
+  font: 500 17px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; /* mã là dữ liệu để chép, monospace để không nhầm ký tự */
+  letter-spacing: 0.04em;
+  word-spacing: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-field);
+  background: var(--raised);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.qr {
+  margin: 4px 0 0;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.qr-img {
+  width: 180px;
+  padding: 8px;
+  border-radius: 12px;
+  background: #ffffff;
+}
+.qr-img svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.check-row input {
+  margin-top: 1px;
+}

@@ -1,0 +1,24 @@
+{
+  // Ideos trên Cloudflare: Worker phục vụ app (thư mục dist) và API đồng bộ ở /api, dữ liệu trong D1.
+  // Trước lần deploy đầu: `npx wrangler d1 create ideos` rồi dán database_id vào dưới.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ideos",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ideos",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // Số mã đồng bộ tối đa máy chủ chấp nhận, để người lạ không dùng ké được D1 của bạn
+    "MAX_VAULTS": "3"
+  }
+}

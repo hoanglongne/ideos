@@ -25,10 +25,12 @@ PWA offline-first: cài lên màn hình chính, mở tức thì, ghi được c�
 - 📊 Thống kê: heatmap 16 tuần, chuỗi ngày ghi liên tiếp, top ICE, phân bổ theo trạng thái/loại/tag
 
 **☁️ Đồng bộ giữa các máy (tuỳ chọn)**
-- Dùng Supabase của chính bạn (gói free là đủ) — đăng nhập cùng tài khoản trên điện thoại, laptop…
-- Offline-first: vẫn ghi/sửa bình thường khi mất mạng, có mạng lại thì tự đẩy/kéo; máy khác nhận thay đổi gần như tức thì (Realtime)
-- Xung đột: bản sửa sau cùng thắng (theo từng ý tưởng); xoá cũng được đồng bộ; ảnh & ghi âm lưu trong Storage riêng tư
-- Dữ liệu có sẵn trên máy được gộp vào tài khoản khi đăng nhập lần đầu
+- Máy chủ riêng của bạn trên Cloudflare (Worker + D1, gói free, không cần thẻ), chạy cùng địa chỉ với app
+- Không tài khoản, không email: máy đầu tạo **mã đồng bộ**, máy khác nhập mã, chép link hoặc quét QR
+- Mã hoá đầu cuối: nội dung, ảnh, ghi âm được mã hoá AES-GCM trên máy trước khi gửi; máy chủ chỉ thấy bản mã
+- Offline-first: mất mạng vẫn ghi/sửa bình thường; có mạng lại thì tự đẩy/kéo; máy đang mở nhận thay đổi trong khoảng 20 giây
+- Xung đột: bản sửa sau cùng thắng (theo từng ý tưởng); xoá cũng được đồng bộ
+- Dữ liệu có sẵn trên máy được gộp vào kho khi ghép lần đầu
 
 **Khác**
 - Tìm kiếm không cần dấu ("y tuong" khớp "ý tưởng"), lọc theo trạng thái/loại/tag, nhiều kiểu sắp xếp
@@ -52,40 +54,51 @@ và chế độ *Operate* của [impeccable](https://github.com/pbakaus/impeccab
 
 ```bash
 npm install
-npm run dev        # dev server
-npm run build      # typecheck + build ra dist/ (kèm service worker)
-npm run preview    # chạy bản build để thử offline / cài PWA
-npm test           # test logic đồng bộ
+npm run dev        # giao diện, tự nạp lại khi sửa code
+npm run dev:api    # (cửa sổ thứ hai) máy chủ đồng bộ + D1 chạy local ở cổng 8787; `npm run dev` tự chuyển /api sang đây
+npm run preview:cf # chạy đúng như bản deploy: build rồi phục vụ app + API bằng wrangler (http://localhost:8787)
+npm test           # test logic đồng bộ và mã hoá
 ```
 
-Deploy `dist/` lên bất kỳ static host nào có HTTPS (Vercel, Netlify, Cloudflare Pages, GitHub Pages…) để cài được PWA trên điện thoại.
 Sinh lại icon PNG từ `public/icon.svg`: `node scripts/icons.mjs` (cần Playwright).
 
-## Bật đồng bộ
+## Đưa lên Cloudflare
 
-1. Tạo project miễn phí ở [supabase.com](https://supabase.com/dashboard)
-2. **SQL Editor** → dán [`supabase/schema.sql`](supabase/schema.sql) → **Run** (trong app có nút "Chép SQL")
-3. **Project Settings → API**: chép *Project URL* và *anon / publishable key* vào **Cài đặt → Đồng bộ** trong app
-   (hoặc đặt sẵn lúc build bằng `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`, xem `.env.example`)
-4. **Authentication → URL Configuration**: đặt *Site URL* là địa chỉ app để link xác nhận email mở đúng app,
-   hoặc tắt *Confirm email* nếu chỉ mình bạn dùng
-5. Tạo tài khoản trên máy thứ nhất, đăng nhập cùng tài khoản trên các máy khác
+Một Worker phục vụ cả app lẫn API đồng bộ, dữ liệu nằm trong D1. Gói Workers Free đủ dư cho một người
+(D1 free: 5 GB, 100.000 lượt ghi mỗi ngày) và không cần thẻ thanh toán.
 
-Cách hoạt động: mỗi bản ghi có cờ `dirty`; một vòng đồng bộ đẩy các bản ghi `dirty` + "bia mộ" (bản ghi đã xoá) lên,
-rồi kéo mọi hàng có `server_updated_at` mới hơn con trỏ lần trước. Server (trigger trong `schema.sql`) bỏ qua bản ghi
-cũ hơn bản đang có, nên thứ tự đồng bộ giữa các máy không ảnh hưởng kết quả. Row Level Security đảm bảo mỗi người chỉ
-thấy dữ liệu của mình. Logic nằm ở `src/sync/engine.ts`, có test ở `src/sync/engine.test.ts` (`npm test`).
+```bash
+npx wrangler login                    # mở trình duyệt để đăng nhập Cloudflare
+npx wrangler d1 create ideos          # in ra database_id
+# dán database_id vào wrangler.jsonc (thay dòng 0000…)
+npm run deploy                        # build, tạo bảng trên D1, deploy
+```
+
+Xong sẽ có địa chỉ `https://ideos.<tên-tài-khoản>.workers.dev`. Mở trên điện thoại để cài PWA, rồi vào
+**Cài đặt → Đồng bộ → Bật đồng bộ**. Trên máy khác: nhập mã, dán link ghép máy hoặc quét QR.
+
+- `MAX_VAULTS` trong `wrangler.jsonc` (mặc định 3) giới hạn số mã đồng bộ máy chủ nhận, để người lạ biết địa chỉ cũng không dùng ké được D1 của bạn.
+- Nếu app nằm ở chỗ khác (vd. Vercel), build app với `VITE_SYNC_URL=https://ideos.<tài-khoản>.workers.dev` (xem `.env.example`). API đã mở CORS.
+- Giữ mã đồng bộ cẩn thận: ai có mã là đọc được dữ liệu. Mất mã thì không khôi phục được dữ liệu trên máy chủ, nhưng dữ liệu trên từng máy vẫn còn.
+
+Cách hoạt động: mỗi bản ghi trên máy có cờ `dirty`; một vòng đồng bộ đẩy các bản ghi `dirty` và "bia mộ" (bản ghi đã xoá),
+rồi kéo các hàng có `seq` lớn hơn con trỏ lần trước. Máy chủ cấp `seq` theo đúng thứ tự commit (dành chỗ và ghi trong cùng
+một transaction D1), nên không bao giờ bỏ sót dòng; nó cũng bỏ qua bản ghi cũ hơn bản đang có, nên thứ tự đồng bộ giữa các máy
+không ảnh hưởng kết quả. Từ mã đồng bộ, máy suy ra định danh kho, token truy cập và khoá mã hoá; máy chủ chỉ lưu hash của token.
+Logic ở `src/sync/engine.ts` và `src/sync/crypto.ts`, có test (`npm test`); máy chủ ở `worker/index.ts`, schema ở `migrations/`.
 
 ## Kỹ thuật
 
-Vite + React + TypeScript, Dexie (IndexedDB), vite-plugin-pwa (Workbox). Không cần backend; đồng bộ (tuỳ chọn) qua Supabase, thư viện chỉ được tải khi bật.
+Vite + React + TypeScript, Dexie (IndexedDB), vite-plugin-pwa (Workbox). Đồng bộ (tuỳ chọn) qua một Cloudflare Worker + D1, mã hoá bằng WebCrypto.
 
 ```
 src/
   db.ts              schema Dexie + thao tác ý tưởng
   types.ts           kiểu dữ liệu, danh sách loại/trạng thái/canvas
   lib/               util, ghi âm/đọc chính tả/vị trí, sao lưu, settings, router hash
-  sync/              engine đồng bộ, adapter Supabase, quản lý phiên & lịch đồng bộ
+  sync/              engine đồng bộ, mã hoá, adapter Cloudflare, quản lý mã & lịch đồng bộ
   components/        CaptureSheet, IdeaList, IdeaDetail, Review, Stats, Settings, SyncPanel, Sketch…
-supabase/schema.sql  bảng, trigger "bản mới hơn thắng", RLS, Realtime, Storage bucket
+worker/index.ts      máy chủ: phục vụ app tĩnh + API /api/v1 trên D1
+migrations/          schema D1
+wrangler.jsonc       cấu hình Cloudflare (tên Worker, D1, MAX_VAULTS)
 ```

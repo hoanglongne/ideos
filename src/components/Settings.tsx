@@ -37,7 +37,7 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 export function Settings({ installEvent, onInstalled }: { installEvent: InstallPromptEvent | null; onInstalled: () => void }) {
   const st = useSettings()
   const sync = useSync()
-  const signedIn = !!sync.email
+  const signedIn = !!sync.code
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [persisted, setPersisted] = useState<boolean | null>(null)
@@ -57,11 +57,11 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
       <header className="title-row">
         <div className="title-text">
           <h1 className="page-title">Cài đặt</h1>
-          <p className="lede">Mọi thứ được lưu ngay trên máy này{signedIn ? ' và đồng bộ qua Supabase của bạn' : ''}.</p>
+          <p className="lede">Mọi thứ được lưu ngay trên máy này{signedIn ? ' và đồng bộ qua máy chủ của bạn, ở dạng đã mã hoá' : ''}.</p>
         </div>
       </header>
 
-      <Row id="sync-h" title="Đồng bộ giữa các máy" desc="Ghi trên điện thoại, xem lại trên laptop. Mất mạng vẫn dùng bình thường, có mạng lại thì tự đẩy và kéo thay đổi.">
+      <Row id="sync-h" title="Đồng bộ giữa các máy" desc="Ghi trên điện thoại, xem lại trên laptop. Mất mạng vẫn dùng bình thường, có mạng lại thì tự đẩy và kéo thay đổi. Dữ liệu được mã hoá trên máy trước khi gửi đi.">
         <SyncPanel />
       </Row>
 

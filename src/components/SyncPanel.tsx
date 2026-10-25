@@ -1,8 +1,21 @@
-import { useState } from 'react'
-import schemaSql from '../../supabase/schema.sql?raw'
+import qrcode from 'qrcode-generator'
+import { useMemo, useState } from 'react'
 import { timeAgo } from '../lib/util'
-import { forgetConfig, requestSync, saveConfig, signIn, signOut, signUp, useSync, type SyncState } from '../sync/manager'
+import { GONE, joinVault, leaveVault, requestSync, startNewVault, useSync, type SyncState } from '../sync/manager'
 import { useToast } from './Toast'
+
+/** Link ghép máy: mã nằm sau dấu #, nên không bao giờ được gửi lên máy chủ. */
+const pairLink = (code: string) => `${location.origin}${location.pathname}#pair=${code}`
+
+let pendingPair: string | null = null
+/** Gọi một lần lúc khởi động: nếu app được mở bằng link ghép máy thì giữ mã lại và dọn địa chỉ. */
+export function takePairLink(): boolean {
+  const m = location.hash.match(/^#pair=([^&]+)/)
+  if (!m) return false
+  pendingPair = decodeURIComponent(m[1])
+  history.replaceState(null, '', location.pathname + '#/settings')
+  return true
+}
 
 export function syncLabel(s: SyncState): string {
   switch (s.status) {
@@ -11,7 +24,8 @@ export function syncLabel(s: SyncState): string {
     case 'offline':
       return s.pending ? `Offline, ${s.pending} thay đổi chờ đẩy lên` : 'Offline, sẽ đồng bộ khi có mạng'
     case 'error':
-      return 'Lỗi đồng bộ: ' + (s.error ?? 'không rõ') + '. Sẽ tự thử lại.'
+      if (s.error === GONE) return GONE
+      return 'Lỗi đồng bộ: ' + (s.error ?? 'không rõ').replace(/\.$/, '') + '. Sẽ tự thử lại.'
     case 'idle':
       if (s.pending) return `${s.pending} thay đổi chờ đồng bộ`
       return s.lastSyncAt ? `Đã đồng bộ ${timeAgo(s.lastSyncAt)}` : 'Đã kết nối'
@@ -22,14 +36,17 @@ export function syncLabel(s: SyncState): string {
 
 export function SyncPanel() {
   const s = useSync()
-  return s.status === 'disabled' ? <Setup /> : !s.email ? <Login /> : <Connected s={s} />
+  if (s.status === 'checking')
+    return <p className="panel-note">{navigator.onLine ? 'Đang kiểm tra máy chủ đồng bộ…' : 'Đang offline. Có mạng lại app sẽ kiểm tra máy chủ đồng bộ.'}</p>
+  if (s.status === 'unavailable') return <Unavailable />
+  if (!s.code) return <Pair />
+  return <Connected s={s} />
 }
 
 /** Trạng thái đồng bộ gọn cho thanh bên / thanh trên điện thoại. */
 export function SyncStatus({ compact }: { compact?: boolean }) {
   const s = useSync()
-  if (!s.email && !compact) return null
-  if (!s.email) return null
+  if (!s.code) return null
   const short = s.status === 'syncing' ? 'Đang đồng bộ' : s.status === 'error' ? 'Lỗi đồng bộ' : s.status === 'offline' ? 'Offline' : s.pending ? `${s.pending} chờ` : 'Đã đồng bộ'
   return (
     <a href="#/settings" className={'sync-status ' + s.status + (compact ? ' compact' : '')} title={syncLabel(s)}>
@@ -55,161 +72,139 @@ function useAction() {
   return [busy, run] as const
 }
 
-function Setup() {
-  const [url, setUrl] = useState('')
-  const [key, setKey] = useState('')
-  const [busy, run] = useAction()
-  const toast = useToast()
+function Unavailable() {
   return (
     <>
-      <p className="panel-note">Kết nối một project Supabase của riêng bạn. Gói miễn phí là đủ.</p>
-      <details className="howto">
-        <summary>Cách thiết lập, khoảng 3 phút</summary>
-        <ol>
-          <li>
-            Tạo project miễn phí tại{' '}
-            <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">
-              supabase.com
-            </a>
-          </li>
-          <li>
-            Mở <b>SQL Editor</b>, dán đoạn SQL rồi bấm <b>Run</b>.{' '}
-            <button
-              type="button"
-              className="text-btn"
-              onClick={async () => {
-                await navigator.clipboard.writeText(schemaSql)
-                toast('Đã chép SQL')
-              }}
-            >
-              Chép SQL
-            </button>
-          </li>
-          <li>
-            Vào <b>Project Settings → API</b>, chép <b>Project URL</b> và <b>anon / publishable key</b> dán vào ô dưới
-          </li>
-          <li>
-            Ở <b>Authentication → URL Configuration</b>, đặt <b>Site URL</b> là {location.origin} để link xác nhận email mở đúng app, hoặc tắt "Confirm email" nếu chỉ mình bạn dùng
-          </li>
-        </ol>
-      </details>
-      <form
-        className="stack"
-        onSubmit={(e) => {
-          e.preventDefault()
-          run(() => saveConfig(url, key))
-        }}
-      >
-        <label className="field">
-          <span className="field-label">Project URL</span>
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" inputMode="url" autoComplete="off" aria-label="Project URL" />
-        </label>
-        <label className="field">
-          <span className="field-label">Anon hoặc publishable key</span>
-          <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="eyJ… hoặc sb_publishable_…" autoComplete="off" aria-label="API key" />
-        </label>
-        <button className="btn primary" disabled={busy || !url || !key}>
-          Kết nối
-        </button>
-      </form>
+      <p className="panel-note">Địa chỉ này chưa có máy chủ đồng bộ của Ideos, nên tạm thời mỗi máy giữ dữ liệu riêng.</p>
+      <p className="panel-note">
+        Máy chủ chạy miễn phí trên Cloudflare cùng với app. Deploy theo hướng dẫn trong README (phần <b>Đưa lên Cloudflare</b>) là mục này tự bật. Trong lúc chờ, bạn vẫn chuyển dữ liệu được bằng sao lưu và khôi phục ở dưới.
+      </p>
     </>
   )
 }
 
-function Login() {
-  const s = useSync()
-  const [mode, setMode] = useState<'in' | 'up'>('in')
-  const [email, setEmail] = useState('')
-  const [pw, setPw] = useState('')
+function Pair() {
+  const [code, setCode] = useState(() => pendingPair ?? '')
   const [busy, run] = useAction()
-  const toast = useToast()
   return (
     <>
-      <p className="panel-note">
-        {mode === 'in' ? 'Đăng nhập cùng một tài khoản trên mọi máy để thấy chung ý tưởng.' : 'Tạo tài khoản trên project Supabase của bạn.'} Ý tưởng đang có trên máy này sẽ được gộp vào tài khoản.
-      </p>
+      <div className="set-item">
+        <div>
+          <p className="item-title">Máy đầu tiên</p>
+          <p className="item-desc">Tạo mã đồng bộ cho kho dữ liệu của bạn. Ý tưởng đang có trên máy này sẽ được đưa lên.</p>
+        </div>
+        <button className="btn primary" disabled={busy} onClick={() => run(startNewVault)}>
+          Bật đồng bộ
+        </button>
+      </div>
       <form
-        className="stack"
+        className="stack set-item-block"
         onSubmit={(e) => {
           e.preventDefault()
-          run(async () => {
-            if (mode === 'in') await signIn(email, pw)
-            else if (await signUp(email, pw)) {
-              toast('Kiểm tra email để xác nhận, rồi quay lại đăng nhập')
-              setMode('in')
-            }
-          })
+          run(() => joinVault(code))
         }}
       >
         <label className="field">
-          <span className="field-label">Email</span>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" aria-label="Email" required />
+          <span className="field-label">Đã có mã từ máy khác?</span>
+          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="XXXX-XXXX-XXXX-…" autoComplete="off" autoCapitalize="characters" spellCheck={false} aria-label="Mã đồng bộ" />
         </label>
-        <label className="field">
-          <span className="field-label">Mật khẩu</span>
-          <input
-            type="password"
-            value={pw}
-            onChange={(e) => setPw(e.target.value)}
-            placeholder="Ít nhất 6 ký tự"
-            autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
-            aria-label="Mật khẩu"
-            minLength={6}
-            required
-          />
-        </label>
-        <button className="btn primary" disabled={busy}>
-          {mode === 'in' ? 'Đăng nhập' : 'Tạo tài khoản'}
+        <p className="item-desc">Dán mã hoặc cả đường link ghép máy. Ý tưởng trên máy này sẽ được gộp với dữ liệu đã có.</p>
+        <button className="btn" disabled={busy || code.trim().length < 20}>
+          Ghép máy này
         </button>
       </form>
-      <p className="panel-note">
-        <button className="text-btn" onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
-          {mode === 'in' ? 'Chưa có tài khoản? Tạo mới' : 'Đã có tài khoản? Đăng nhập'}
-        </button>
-        {!s.configFromEnv && (
-          <>
-            {' · '}Server {s.url.replace(/^https?:\/\//, '')}{' '}
-            <button className="text-btn" onClick={() => run(forgetConfig)}>
-              Đổi
-            </button>
-          </>
-        )}
-      </p>
     </>
   )
 }
 
 function Connected({ s }: { s: SyncState }) {
   const [busy, run] = useAction()
-  const [confirmOut, setConfirmOut] = useState(false)
+  const toast = useToast()
+  const [showQr, setShowQr] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  const [wipeLocal, setWipeLocal] = useState(false)
+  const [wipeServer, setWipeServer] = useState(false)
+  const link = pairLink(s.code!)
+  const qr = useMemo(() => {
+    if (!showQr) return ''
+    const q = qrcode(0, 'M')
+    q.addData(link)
+    q.make()
+    return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true })
+  }, [showQr, link])
+
+  const copy = async (text: string, what: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast('Đã chép ' + what)
+    } catch {
+      toast('Không chép được, hãy chọn và chép bằng tay')
+    }
+  }
+
   return (
     <>
       <div className={'sync-line ' + s.status}>
         <span className="sync-dot" aria-hidden="true" />
         <span>{syncLabel(s)}</span>
       </div>
-      <p className="panel-note">Tài khoản {s.email}</p>
       <div className="row-actions">
         <button className="btn" disabled={s.status === 'syncing'} onClick={() => requestSync(0)}>
           Đồng bộ ngay
         </button>
-        <button className="text-btn" onClick={() => setConfirmOut(!confirmOut)} aria-expanded={confirmOut}>
-          Đăng xuất
-        </button>
       </div>
-      {confirmOut && (
-        <div className="confirm-box">
-          {s.pending > 0 && <p className="panel-note danger-text">Còn {s.pending} thay đổi chưa đồng bộ. App sẽ cố đẩy lên trước khi thoát.</p>}
-          <div className="row-actions">
-            <button className="btn" disabled={busy} onClick={() => run(() => signOut(false))}>
-              Thoát, giữ dữ liệu trên máy
-            </button>
-            <button className="text-btn danger" disabled={busy || (s.pending > 0 && s.status === 'offline')} onClick={() => run(() => signOut(true))}>
-              Thoát & xoá dữ liệu trên máy này
-            </button>
-          </div>
+
+      <div className="set-item-block">
+        <p className="item-title">Mã đồng bộ</p>
+        <p className="item-desc">Nhập mã này trên máy khác để thấy chung ý tưởng. Ai có mã đều đọc được dữ liệu của bạn, nên đừng đăng công khai.</p>
+        <p className="vault-code" aria-label="Mã đồng bộ">
+          {s.code}
+        </p>
+        <div className="row-actions">
+          <button className="btn" onClick={() => copy(s.code!, 'mã')}>
+            Chép mã
+          </button>
+          <button className="btn" onClick={() => copy(link, 'link ghép máy')}>
+            Chép link
+          </button>
+          <button className="text-btn" onClick={() => setShowQr(!showQr)} aria-expanded={showQr}>
+            {showQr ? 'Ẩn mã QR' : 'Hiện mã QR'}
+          </button>
         </div>
-      )}
+        {showQr && (
+          <figure className="qr">
+            <div className="qr-img" role="img" aria-label="Mã QR chứa link ghép máy" dangerouslySetInnerHTML={{ __html: qr }} />
+            <figcaption className="item-desc">Quét bằng camera điện thoại để mở link. Trên iPhone, nếu đã cài app, hãy chép link rồi dán vào ô mã trong app đã cài.</figcaption>
+          </figure>
+        )}
+      </div>
+
+      <div className="set-item-block">
+        <button className="text-btn" onClick={() => setLeaving(!leaving)} aria-expanded={leaving}>
+          Ngắt đồng bộ trên máy này
+        </button>
+        {leaving && (
+          <div className="confirm-box">
+            {s.pending > 0 && <p className="panel-note danger-text">Còn {s.pending} thay đổi chưa đồng bộ. App sẽ cố đẩy lên trước khi ngắt.</p>}
+            <label className="check-row">
+              <input type="checkbox" checked={wipeLocal} onChange={(e) => setWipeLocal(e.target.checked)} />
+              <span>Xoá ý tưởng trên máy này</span>
+            </label>
+            <label className="check-row">
+              <input type="checkbox" checked={wipeServer} onChange={(e) => setWipeServer(e.target.checked)} />
+              <span>Xoá luôn dữ liệu trên máy chủ (các máy khác sẽ không đồng bộ được nữa)</span>
+            </label>
+            <div className="row-actions">
+              <button className={wipeLocal || wipeServer ? 'btn danger-outline' : 'btn'} disabled={busy} onClick={() => run(() => leaveVault({ wipeLocal, wipeServer }))}>
+                {wipeLocal || wipeServer ? 'Ngắt và xoá' : 'Ngắt, giữ dữ liệu trên máy'}
+              </button>
+              <button className="text-btn" onClick={() => setLeaving(false)}>
+                Huỷ
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   )
 }

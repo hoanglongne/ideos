@@ -2,13 +2,13 @@ import type { IdeosDB } from '../db'
 import { stripSync } from '../db'
 import type { Attachment, AttachmentType, Idea } from '../types'
 
-/* Hàng dữ liệu phía server. `serverTs` do server gán, dùng làm con trỏ kéo về. */
+/* Hàng dữ liệu phía server. `seq` do server gán, tăng theo thứ tự commit, dùng làm con trỏ kéo về. */
 export interface RemoteIdea {
   id: string
   data: Idea | null
   updatedAt: number
   deleted: boolean
-  serverTs: string
+  seq: number
 }
 
 export interface RemoteAttachment {
@@ -19,22 +19,24 @@ export interface RemoteAttachment {
   duration: number | null
   createdAt: number
   deleted: boolean
-  serverTs: string
+  seq: number
 }
 
-type Push<T> = Omit<T, 'serverTs'>
+type Push<T> = Omit<T, 'seq'>
 
 /**
  * Hợp đồng với backend. Server phải:
  *  - bỏ qua upsert ý tưởng có updatedAt nhỏ hơn bản đang có (bản mới hơn thắng)
- *  - gán serverTs tăng dần mỗi lần ghi
+ *  - gán seq tăng dần theo đúng thứ tự commit, để kéo "seq > con trỏ" không bỏ sót dòng nào
+ *  - trả các hàng theo seq tăng dần
  */
 export interface SyncRemote {
-  userId: string
+  /** Định danh kho dữ liệu; đổi kho thì dữ liệu trên máy được gộp vào kho mới. */
+  scope: string
   pushIdeas(rows: Push<RemoteIdea>[]): Promise<void>
-  pullIdeas(since: string | null): Promise<RemoteIdea[]>
+  pullIdeas(after: number): Promise<RemoteIdea[]>
   pushAttachments(rows: Push<RemoteAttachment>[]): Promise<void>
-  pullAttachments(since: string | null): Promise<RemoteAttachment[]>
+  pullAttachments(after: number): Promise<RemoteAttachment[]>
   uploadBlob(id: string, blob: Blob, mime: string): Promise<void>
   downloadBlob(id: string): Promise<Blob>
   deleteBlobs(ids: string[]): Promise<void>
@@ -45,19 +47,15 @@ export interface SyncResult {
   pulled: number
 }
 
-const BATCH = 200
-/** Kéo lùi con trỏ một chút để không lỡ các giao dịch ghi commit lệch thứ tự. */
-const OVERLAP_MS = 60_000
+const BATCH = 100
 
-const META = { user: 'sync.userId', ideas: 'sync.ideasCursor', atts: 'sync.attsCursor' }
+const META = { scope: 'sync.scope', ideas: 'sync.ideasSeq', atts: 'sync.attsSeq' }
 
 async function getMeta<T>(db: IdeosDB, key: string): Promise<T | undefined> {
   return (await db.meta.get(key))?.value as T | undefined
 }
 const setMeta = (db: IdeosDB, key: string, value: unknown) => db.meta.put({ key, value })
 
-const since = (cursor: string | undefined) => (cursor ? new Date(Date.parse(cursor) - OVERLAP_MS).toISOString() : null)
-const maxTs = (a: string | undefined, b: string) => (!a || Date.parse(b) > Date.parse(a) ? b : a)
 
 function chunk<T>(xs: T[], n = BATCH): T[][] {
   const out: T[][] = []
@@ -80,13 +78,13 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
   let pushed = 0
   let pulled = 0
 
-  // Đổi tài khoản → gộp toàn bộ dữ liệu trên máy vào tài khoản mới
-  if ((await getMeta<string>(db, META.user)) !== remote.userId) {
+  // Đổi kho (máy mới ghép, hoặc chuyển sang mã khác) → gộp toàn bộ dữ liệu trên máy vào kho đó
+  if ((await getMeta<string>(db, META.scope)) !== remote.scope) {
     await db.transaction('rw', [db.ideas, db.attachments, db.meta], async () => {
       await db.meta.bulkDelete([META.ideas, META.atts])
       await db.ideas.toCollection().modify({ dirty: 1 })
       await db.attachments.toCollection().modify({ dirty: 1 })
-      await setMeta(db, META.user, remote.userId)
+      await setMeta(db, META.scope, remote.scope)
     })
   }
 
@@ -138,13 +136,13 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
 
   /* ---------- kéo về ---------- */
 
-  const ideaCursor = await getMeta<string>(db, META.ideas)
-  const ideaRows = await remote.pullIdeas(since(ideaCursor))
+  const ideaCursor = (await getMeta<number>(db, META.ideas)) ?? 0
+  const ideaRows = await remote.pullIdeas(ideaCursor)
   if (ideaRows.length) {
     await db.transaction('rw', [db.ideas, db.tombstones, db.meta], async () => {
       let cursor = ideaCursor
       for (const row of ideaRows) {
-        cursor = maxTs(cursor, row.serverTs)
+        cursor = Math.max(cursor, row.seq)
         const local = await db.ideas.get(row.id)
         if (row.deleted || !row.data) {
           if (local && local.updatedAt <= row.updatedAt) {
@@ -164,8 +162,8 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
     })
   }
 
-  const attCursor = await getMeta<string>(db, META.atts)
-  const attRows = await remote.pullAttachments(since(attCursor))
+  const attCursor = (await getMeta<number>(db, META.atts)) ?? 0
+  const attRows = await remote.pullAttachments(attCursor)
   let cursor = attCursor
   for (const row of attRows) {
     if (row.deleted) {
@@ -177,6 +175,7 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
       let blob: Blob
       try {
         blob = await remote.downloadBlob(row.id)
+        if (!blob.type && row.mime) blob = new Blob([blob], { type: row.mime })
       } catch {
         break // tải lại ở lần sau, không tiến con trỏ qua hàng này
       }
@@ -192,9 +191,9 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
       })
       pulled++
     }
-    cursor = maxTs(cursor, row.serverTs)
+    cursor = Math.max(cursor, row.seq)
   }
-  if (cursor && cursor !== attCursor) await setMeta(db, META.atts, cursor)
+  if (cursor !== attCursor) await setMeta(db, META.atts, cursor)
 
   return { pushed, pulled }
 }

@@ -5,6 +5,8 @@ import pkg from './package.json' with { type: 'json' }
 
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  // `npm run dev` gọi API đồng bộ của `wrangler dev` (chạy song song bằng `npm run dev:api`)
+  server: { proxy: { '/api': 'http://127.0.0.1:8787' } },
   plugins: [
     react(),
     VitePWA({
@@ -40,6 +42,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
       },
     }),
   ],
