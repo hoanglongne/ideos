@@ -17,8 +17,15 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Workers AI: chép lời ghi âm, sắp xếp ý tưởng, phản biện. Gói free có hạn mức mỗi ngày (tính theo "neuron").
+  "ai": { "binding": "AI" },
   "vars": {
     // Số mã đồng bộ tối đa máy chủ chấp nhận, để người lạ không dùng ké được D1 của bạn
-    "MAX_VAULTS": "3"
+    "MAX_VAULTS": "3",
+    // Số lần gọi AI tối đa mỗi ngày cho mỗi mã đồng bộ, để không vượt hạn mức miễn phí
+    "AI_DAILY_LIMIT": "30",
+    // Model hay bị Cloudflare thay/khai tử; đổi ở đây là đủ, không cần sửa code
+    "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "AI_ASR_MODEL": "@cf/openai/whisper-large-v3-turbo"
   }
 }

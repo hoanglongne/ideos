@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { clearAll, createDb, deleteIdea, newIdea, removeAttachment, restoreIdea, updateIdea, type IdeosDB } from '../db'
+import { addJournal, clearAll, createDb, deleteIdea, newIdea, removeAttachment, restoreIdea, updateIdea, type IdeosDB } from '../db'
 import { pendingCount, syncOnce } from './engine'
 import { MemoryServer } from './memoryRemote'
 
@@ -204,5 +204,79 @@ describe('syncOnce', () => {
     await syncOnce(A, server.remote('u1'))
     await syncOnce(B, server.remote('u1'))
     expect(await B.ideas.count()).toBe(0)
+  })
+
+  describe('gộp khi hai máy cùng sửa lúc chưa đồng bộ', () => {
+    const setup = async () => {
+      const idea = newIdea({ title: 'gốc' })
+      await A.ideas.add(idea)
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      return idea
+    }
+    const both = async (id: string) => [(await A.ideas.get(id))!, (await B.ideas.get(id))!]
+
+    it('điện thoại ghi thêm nhật ký, laptop sửa tiêu đề sau: giữ cả hai', async () => {
+      const idea = await setup()
+      await sleep()
+      await addJournal(idea.id, 'nghĩ thêm lúc đi bộ', 'note', B)
+      await sleep()
+      await updateIdea(idea.id, { title: 'tiêu đề mới' }, A)
+      await syncOnce(B, server.remote('u1'))
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      for (const i of await both(idea.id)) {
+        expect(i.title).toBe('tiêu đề mới')
+        expect(i.journal.map((j) => j.text)).toEqual(['nghĩ thêm lúc đi bộ'])
+      }
+      expect(await pendingCount(A)).toBe(0)
+      expect(await pendingCount(B)).toBe(0)
+    })
+
+    it('laptop sửa tiêu đề trước, điện thoại ghi nhật ký sau, laptop đồng bộ trước: vẫn giữ cả hai', async () => {
+      const idea = await setup()
+      await sleep()
+      await updateIdea(idea.id, { title: 'tiêu đề mới' }, A)
+      await sleep()
+      await addJournal(idea.id, 'ghi trên điện thoại', 'note', B)
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      await syncOnce(A, server.remote('u1'))
+      for (const i of await both(idea.id)) {
+        expect(i.journal.map((j) => j.text)).toEqual(['ghi trên điện thoại'])
+      }
+      // trường đơn lẻ: bản sửa sau cùng thắng
+      expect((await A.ideas.get(idea.id))!.title).toBe((await B.ideas.get(idea.id))!.title)
+    })
+
+    it('hai máy cùng thêm giả định và nhật ký: hợp lại đủ, theo thứ tự thời gian', async () => {
+      const idea = await setup()
+      await sleep()
+      await addJournal(idea.id, 'A1', 'note', A)
+      await updateIdea(idea.id, { assumptions: [{ id: 'as-a', text: 'người ta chịu trả tiền', risk: 3, test: '', status: 'untested', createdAt: 1 }] }, A)
+      await sleep()
+      await addJournal(idea.id, 'B1', 'note', B)
+      await updateIdea(idea.id, { evidence: [{ id: 'ev-b', at: 2, text: '3/5 người nói có', source: 'phỏng vấn', signal: 'for' }] }, B)
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      await syncOnce(A, server.remote('u1'))
+      for (const i of await both(idea.id)) {
+        expect(i.journal.map((j) => j.text)).toEqual(['A1', 'B1'])
+        expect(i.assumptions.map((x) => x.id)).toEqual(['as-a'])
+        expect(i.evidence.map((x) => x.id)).toEqual(['ev-b'])
+      }
+    })
+
+    it('ý tưởng kiểu cũ từ máy chưa cập nhật (không có nhật ký) vẫn đọc được', async () => {
+      const old = newIdea({ title: 'kiểu cũ' }) as Partial<ReturnType<typeof newIdea>>
+      delete old.journal
+      delete old.assumptions
+      delete old.evidence
+      await server.remote('u1').pushIdeas([{ id: old.id!, data: old as never, updatedAt: old.updatedAt!, deleted: false }])
+      await syncOnce(B, server.remote('u1'))
+      const got = await B.ideas.get(old.id!)
+      expect(got?.journal).toEqual([])
+      expect(got?.assumptions).toEqual([])
+    })
   })
 })

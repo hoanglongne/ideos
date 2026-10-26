@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { Attachment, AttachmentType } from '../types'
 import { useObjectUrl } from '../lib/media'
 import { formatDuration } from '../lib/util'
@@ -11,7 +11,7 @@ export interface PendingAttachment {
   duration?: number
 }
 
-function Thumb({ att, onRemove }: { att: PendingAttachment | Attachment; onRemove?: () => void }) {
+function Thumb({ att, onRemove, extra }: { att: PendingAttachment | Attachment; onRemove?: () => void; extra?: ReactNode }) {
   const url = useObjectUrl(att.blob)
   const [zoom, setZoom] = useState(false)
   if (!url) return null
@@ -21,6 +21,7 @@ function Thumb({ att, onRemove }: { att: PendingAttachment | Attachment; onRemov
         <div className="att-audio">
           <audio controls src={url} preload="metadata" />
           {att.duration ? <span className="muted num">{formatDuration(att.duration)}</span> : null}
+          {extra}
         </div>
       ) : (
         <>
@@ -41,18 +42,21 @@ function Thumb({ att, onRemove }: { att: PendingAttachment | Attachment; onRemov
   )
 }
 
-export function AttachmentList({
+export function AttachmentList<T extends PendingAttachment | Attachment>({
   items,
   onRemove,
+  extra,
 }: {
-  items: (PendingAttachment | Attachment)[]
+  items: T[]
   onRemove?: (index: number) => void
+  /** Thêm nút cho từng đính kèm (vd. "Chép lời" cho ghi âm). */
+  extra?: (att: T) => ReactNode
 }) {
   if (!items.length) return null
   return (
     <div className="att-list">
       {items.map((a, i) => (
-        <Thumb key={'id' in a ? a.id : i} att={a} onRemove={onRemove ? () => onRemove(i) : undefined} />
+        <Thumb key={'id' in a ? a.id : i} att={a} onRemove={onRemove ? () => onRemove(i) : undefined} extra={extra?.(a)} />
       ))}
     </div>
   )

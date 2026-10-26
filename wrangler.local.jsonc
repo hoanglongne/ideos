@@ -1,0 +1,22 @@
+{
+  // Cấu hình để chạy trên máy (`npm run dev:api`, `npm run preview:cf`): giống wrangler.jsonc nhưng
+  // không có binding AI (Workers AI không chạy offline và sẽ tốn hạn mức thật). AI_FAKE trả câu trả lời mẫu.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ideos-local",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./dist", "binding": "ASSETS" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ideos",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "MAX_VAULTS": "3",
+    "AI_DAILY_LIMIT": "30",
+    "AI_FAKE": "1"
+  }
+}

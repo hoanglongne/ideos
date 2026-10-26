@@ -80,6 +80,9 @@ let lastHead = -1
 
 const refreshPending = async () => set({ pending: await pendingCount(db) })
 
+/** Khoá của kho đang ghép (cho các tính năng cần máy chủ, như AI); null khi chưa bật đồng bộ. */
+export const currentKeys = () => keys
+
 export function requestSync(delay = 0) {
   clearTimeout(timer)
   timer = setTimeout(runSync, delay)

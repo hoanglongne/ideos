@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:api": "wrangler d1 migrations apply ideos --local && wrangler dev --port 8787",
+    "dev:api": "wrangler d1 migrations apply ideos --local -c wrangler.local.jsonc && wrangler dev -c wrangler.local.jsonc --port 8787",
     "build": "tsc --noEmit && tsc --noEmit -p worker && vite build",
     "preview": "vite preview",
-    "preview:cf": "vite build && wrangler d1 migrations apply ideos --local && wrangler dev",
+    "preview:cf": "vite build && wrangler d1 migrations apply ideos --local -c wrangler.local.jsonc && wrangler dev -c wrangler.local.jsonc",
     "deploy": "vite build && wrangler d1 migrations apply ideos --remote && wrangler deploy",
     "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
     "test": "vitest run"

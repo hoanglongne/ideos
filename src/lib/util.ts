@@ -59,7 +59,16 @@ export function iceScore(idea: Pick<Idea, 'scores'>): number | null {
 export function matchesQuery(idea: Idea, q: string) {
   if (!q.trim()) return true
   const hay = fold(
-    [idea.title, idea.body, idea.tags.map((t) => '#' + t).join(' '), Object.values(idea.canvas).join(' '), idea.tasks.map((t) => t.text).join(' ')].join(' '),
+    [
+      idea.title,
+      idea.body,
+      idea.tags.map((t) => '#' + t).join(' '),
+      Object.values(idea.canvas).join(' '),
+      idea.tasks.map((t) => t.text).join(' '),
+      (idea.journal ?? []).map((j) => j.text).join(' '),
+      (idea.assumptions ?? []).map((a) => a.text + ' ' + a.test).join(' '),
+      (idea.evidence ?? []).map((e) => e.text + ' ' + e.source).join(' '),
+    ].join(' '),
   )
   return fold(q)
     .split(/\s+/)

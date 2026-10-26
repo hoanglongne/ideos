@@ -26,7 +26,7 @@ interface AttMeta {
 /** Gốc của API: cùng địa chỉ với app (deploy trên Cloudflare), hoặc VITE_SYNC_URL nếu app nằm chỗ khác. */
 export const API_BASE = ((import.meta.env.VITE_SYNC_URL as string | undefined) || '').replace(/\/+$/, '') + '/api/v1'
 
-async function call(path: string, init: RequestInit & { token?: string } = {}) {
+export async function call(path: string, init: RequestInit & { token?: string } = {}) {
   const { token, ...rest } = init
   const res = await fetch(API_BASE + path, {
     ...rest,

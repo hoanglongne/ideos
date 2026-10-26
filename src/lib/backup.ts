@@ -1,6 +1,6 @@
 import { db, stripSync } from '../db'
 import type { Attachment, Idea } from '../types'
-import { CANVAS_FIELDS, STATUSES } from '../types'
+import { ASSUMPTION_STATUSES, CANVAS_FIELDS, RISKS, SIGNALS, STATUSES } from '../types'
 import { iceScore, kindMeta } from './util'
 
 interface BackupFile {
@@ -50,9 +50,9 @@ export async function importJson(file: Blob): Promise<{ added: number; updated: 
         skipped++
         continue
       }
-      await db.ideas.put(stripSync(idea))
+      await db.ideas.put({ ...stripSync(idea), dirty: 1 })
     }
-    for (const a of atts) if (!(await db.attachments.get(a.id))) await db.attachments.put(stripSync(a))
+    for (const a of atts) if (!(await db.attachments.get(a.id))) await db.attachments.put({ ...stripSync(a), dirty: 1 })
   })
   return { added, updated, skipped }
 }
@@ -73,6 +73,21 @@ export function ideaToMarkdown(idea: Idea): string {
   if (idea.tasks.length) {
     out.push('', '**Việc cần làm:**')
     for (const t of idea.tasks) out.push(`- [${t.done ? 'x' : ' '}] ${t.text}`)
+  }
+  if (idea.assumptions.length) {
+    out.push('', '**Giả định:**')
+    for (const a of idea.assumptions) {
+      const st = ASSUMPTION_STATUSES.find((x) => x.value === a.status)?.label
+      out.push(`- ${a.text} _(${RISKS.find((r) => r.value === a.risk)?.label.toLowerCase()}, ${st?.toLowerCase()})_${a.test ? ` — thử: ${a.test}` : ''}`)
+    }
+  }
+  if (idea.evidence.length) {
+    out.push('', '**Bằng chứng:**')
+    for (const e of idea.evidence) out.push(`- [${SIGNALS.find((x) => x.value === e.signal)?.label}] "${e.text}"${e.source ? ` — ${e.source}` : ''}`)
+  }
+  if (idea.journal.length) {
+    out.push('', '**Nhật ký:**')
+    for (const j of [...idea.journal].sort((a, b) => a.at - b.at)) out.push(`- ${new Date(j.at).toLocaleString('vi-VN')}: ${j.text.replace(/\n+/g, ' ')}`)
   }
   if (idea.links.length) {
     out.push('', '**Liên kết:**')

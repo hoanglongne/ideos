@@ -1,13 +1,14 @@
 import Dexie, { type EntityTable, type Table } from 'dexie'
-import type { Attachment, Idea } from './types'
+import type { Attachment, Idea, JournalEntry } from './types'
 import { emptyCanvas } from './types'
 import { uid } from './lib/util'
 import { IS_DEMO, demoIdeas } from './lib/demo'
 
 /**
  * Đồng bộ: mọi bản ghi có cờ `dirty` (1 = có thay đổi chưa đẩy lên server).
- * Hook tự bật cờ cho mọi thao tác ghi, trừ khi bản ghi mang `_remote: true`
+ * Hook tự bật cờ cho add/update/modify, trừ khi bản ghi mang `_remote: true`
  * (dữ liệu vừa kéo về / vừa được server xác nhận) — khi đó cờ được tắt.
+ * Riêng `put()` đè lên bản ghi đã có thì kết quả hook không đáng tin: luôn ghi `dirty` tường minh.
  */
 export interface SyncFlags {
   dirty?: 0 | 1
@@ -64,6 +65,14 @@ export function createDb(name: string): IdeosDB {
       await tx.table('attachments').toCollection().modify({ dirty: 1 })
     })
 
+  // Ý tưởng cũ (hoặc từ máy chưa cập nhật) thiếu các mảng mới: điền mặc định ngay lúc đọc,
+  // thay vì một lần nâng cấp DB vốn sẽ đánh dấu mọi ý tưởng là "vừa sửa" trên mọi máy.
+  d.ideas.hook('reading', (obj) => {
+    if (!obj) return obj
+    delete (obj as SyncFlags)._remote // put() đè bản ghi có thể để sót cờ này
+    return normalizeIdea(obj)
+  })
+
   for (const table of [d.ideas, d.attachments] as unknown as Table<SyncFlags, string>[]) {
     const isIdeas = table.name === 'ideas'
     table.hook('creating', (_pk, obj: SyncFlags) => {
@@ -76,7 +85,8 @@ export function createDb(name: string): IdeosDB {
       }
     })
     table.hook('updating', (mods) => {
-      if ('_remote' in mods) return { _remote: undefined, dirty: 0 }
+      // so theo giá trị: bản ghi cũ có thể còn key _remote = undefined, put() sau đó sẽ báo key này "đổi"
+      if ((mods as SyncFlags)._remote === true) return { _remote: undefined, dirty: 0 }
       emitLocalChange()
       // mọi thay đổi cục bộ đều phải tăng updatedAt để "bản mới hơn thắng" hoạt động đúng
       return isIdeas && !('updatedAt' in mods) ? { dirty: 1, updatedAt: Date.now() } : { dirty: 1 }
@@ -117,10 +127,49 @@ export function newIdea(partial: Partial<Idea> = {}): Idea {
     tasks: [],
     links: [],
     related: [],
+    journal: [],
+    assumptions: [],
+    evidence: [],
     createdAt: now,
     updatedAt: now,
     ...partial,
   }
+}
+
+/** Ý tưởng tạo trước khi có nhật ký/giả định/bằng chứng (hoặc từ máy chưa cập nhật app) thiếu các mảng đó. */
+export function normalizeIdea<T extends Partial<Idea>>(idea: T): T & Pick<Idea, 'journal' | 'assumptions' | 'evidence'> {
+  return { ...idea, journal: idea.journal ?? [], assumptions: idea.assumptions ?? [], evidence: idea.evidence ?? [] }
+}
+
+const LIST_FIELDS = ['journal', 'assumptions', 'evidence', 'tasks'] as const
+
+/**
+ * Gộp hai phiên bản của cùng một ý tưởng khi cả hai máy cùng sửa lúc chưa đồng bộ:
+ * các trường đơn lẻ lấy theo bản mới hơn, còn các danh sách (nhật ký, giả định, bằng chứng, việc)
+ * lấy hợp theo id, để một dòng ghi thêm trên điện thoại không mất vì laptop vừa sửa tiêu đề.
+ */
+export function mergeIdeas(newer: Idea, older: Idea): Idea {
+  const out: Idea = normalizeIdea({ ...newer })
+  const o = normalizeIdea(older)
+  for (const f of LIST_FIELDS) {
+    const have = new Set((out[f] as { id: string }[]).map((x) => x.id))
+    const extra = (o[f] as { id: string }[]).filter((x) => !have.has(x.id))
+    if (extra.length) (out as unknown as Record<string, unknown[]>)[f] = [...(out[f] as unknown[]), ...extra]
+  }
+  out.journal = [...out.journal].sort((a, b) => a.at - b.at)
+  out.related = [...new Set([...out.related, ...o.related])]
+  return out
+}
+
+/** Thêm một dòng nhật ký vào ý tưởng. */
+export async function addJournal(ideaId: string, text: string, kind: JournalEntry['kind'] = 'note', d: IdeosDB = db) {
+  const t = text.trim()
+  if (!t) return
+  await d.transaction('rw', d.ideas, async () => {
+    const idea = await d.ideas.get(ideaId)
+    if (!idea) return
+    await d.ideas.update(ideaId, { journal: [...(idea.journal ?? []), { id: uid(), at: Date.now(), kind, text: t }], updatedAt: Date.now() })
+  })
 }
 
 /** `changes` nhận cả key path lồng nhau, ví dụ { 'scores.impact': 8 }. */
@@ -149,8 +198,8 @@ export async function deleteIdea(id: string, d: IdeosDB = db) {
 export async function restoreIdea(snapshot: { idea?: Idea; atts: Attachment[] }, d: IdeosDB = db) {
   if (!snapshot.idea) return
   await d.transaction('rw', [d.ideas, d.attachments, d.tombstones], async () => {
-    await d.ideas.put({ ...snapshot.idea!, updatedAt: Date.now() })
-    await d.attachments.bulkPut(snapshot.atts)
+    await d.ideas.put({ ...snapshot.idea!, updatedAt: Date.now(), dirty: 1 })
+    await d.attachments.bulkPut(snapshot.atts.map((a) => ({ ...a, dirty: 1 as const })))
     await d.tombstones.bulkDelete([`ideas:${snapshot.idea!.id}`, ...snapshot.atts.map((a) => `attachments:${a.id}`)])
   })
 }

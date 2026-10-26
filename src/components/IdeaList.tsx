@@ -3,6 +3,7 @@ import { Plus, Search } from 'lucide-react'
 import { useMemo, useState, type RefObject } from 'react'
 import { db } from '../db'
 import { enterDemo } from '../lib/demo'
+import { nextActions } from '../lib/insight'
 import { useSettings } from '../lib/settings'
 import { iceScore, matchesQuery } from '../lib/util'
 import { KINDS, REVIEWABLE, STATUSES, type Idea, type IdeaKind, type IdeaStatus } from '../types'
@@ -93,17 +94,14 @@ export function IdeaList({
     const due = ideas
       .filter((i) => REVIEWABLE.includes(i.status) && (i.reviewedAt ?? i.createdAt) < cutoff)
       .sort((a, b) => (a.reviewedAt ?? a.createdAt) - (b.reviewedAt ?? b.createdAt))
-    const top = ideas
-      .filter((i) => iceScore(i) !== null && ACTIVE.includes(i.status))
-      .sort((a, b) => iceScore(b)! - iceScore(a)!)
-      .slice(0, 4)
+    const next = nextActions(ideas, 4)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const week = Array.from({ length: 7 }, (_, k) => {
       const start = today.getTime() - (6 - k) * DAY
       return { start, n: ideas.filter((i) => i.createdAt >= start && i.createdAt < start + DAY).length }
     })
-    return { due: due.slice(0, 4), top, week }
+    return { due: due.slice(0, 4), next, week }
   }, [ideas, reviewAfterDays])
 
   if (!ideas) return null
@@ -259,21 +257,25 @@ export function IdeaList({
               </div>
               <WeekStrip days={side.week} />
             </section>
-            <section className="panel" aria-labelledby="top-h">
+            <section className="panel" aria-labelledby="next-h">
               <div className="panel-head">
-                <h2 id="top-h">Nên làm trước</h2>
+                <h2 id="next-h">Việc tiếp theo</h2>
               </div>
-              {side.top.length ? (
-                <ol className="mini-list ranked">
-                  {side.top.map((i) => (
-                    <li key={i.id}>
-                      <a href={'#/idea/' + i.id}>{i.title}</a>
-                      <span className="num ice-figure">{iceScore(i)!.toFixed(1)}</span>
+              {side.next.length ? (
+                <ul className="next-list">
+                  {side.next.map((a, k) => (
+                    <li key={k}>
+                      <a href={'#/idea/' + a.ideaId}>
+                        <span className="next-text">{a.text}</span>
+                        <span className="muted next-meta">
+                          {a.kind === 'test' ? 'Thử giả định' : 'Bước tiếp theo'} · {a.ideaTitle}
+                        </span>
+                      </a>
                     </li>
                   ))}
-                </ol>
+                </ul>
               ) : (
-                <p className="panel-note">Chấm điểm ICE trong từng ý tưởng, cái nào đáng làm nhất sẽ hiện ở đây.</p>
+                <p className="panel-note">Ghi giả định và bước tiếp theo trong từng ý tưởng; việc đáng làm nhất sẽ hiện ở đây, thử giả định rủi ro cao trước.</p>
               )}
             </section>
           </aside>

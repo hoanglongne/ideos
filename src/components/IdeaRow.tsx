@@ -1,6 +1,7 @@
 import { Pin } from 'lucide-react'
 import type { Idea } from '../types'
 import { STATUSES } from '../types'
+import { maturity } from '../lib/insight'
 import { iceScore, kindMeta, timeAgo } from '../lib/util'
 
 export function StatusPill({ status }: { status: Idea['status'] }) {
@@ -16,6 +17,7 @@ export function IdeaRow({ idea, attCount }: { idea: Idea; attCount?: number }) {
     idea.tags.length ? idea.tags.slice(0, 3).map((t) => '#' + t).join(' ') : null,
     idea.tasks.length ? `${done}/${idea.tasks.length} việc` : null,
     attCount ? `${attCount} đính kèm` : null,
+    maturity(idea),
   ].filter(Boolean)
   return (
     <a className="row" href={'#/idea/' + idea.id}>
