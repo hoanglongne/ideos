@@ -77,6 +77,17 @@ npm run deploy                        # build, tạo bảng trên D1, deploy
 Xong sẽ có địa chỉ `https://ideos.<tên-tài-khoản>.workers.dev`. Mở trên điện thoại để cài PWA, rồi vào
 **Cài đặt → Đồng bộ → Bật đồng bộ**. Trên máy khác: nhập mã, dán link ghép máy hoặc quét QR.
 
+### Tự deploy khi push lên GitHub
+
+`.github/workflows/deploy.yml` chạy test và build cho mọi push và PR; push lên `main` mà qua hết thì deploy luôn
+(chạy migration D1 rồi `wrangler deploy`). Cần thêm 2 secret một lần trong **Settings → Secrets and variables → Actions**:
+
+- `CLOUDFLARE_ACCOUNT_ID`: lấy bằng `npx wrangler whoami`, hoặc ở cột phải trang Workers & Pages trên dashboard.
+- `CLOUDFLARE_API_TOKEN`: tạo ở **My Profile → API Tokens → Create Token**, chọn mẫu **Edit Cloudflare Workers**,
+  thêm quyền **Account → D1 → Edit**.
+
+Không cần commit `database_id`: nếu `wrangler.jsonc` còn id mẫu, CI tự tra id của D1 tên `ideos` (`scripts/ci-d1-id.mjs`).
+
 - `MAX_VAULTS` trong `wrangler.jsonc` (mặc định 3) giới hạn số mã đồng bộ máy chủ nhận, để người lạ biết địa chỉ cũng không dùng ké được D1 của bạn.
 - Nếu app nằm ở chỗ khác (vd. Vercel), build app với `VITE_SYNC_URL=https://ideos.<tài-khoản>.workers.dev` (xem `.env.example`). API đã mở CORS.
 - Giữ mã đồng bộ cẩn thận: ai có mã là đọc được dữ liệu. Mất mã thì không khôi phục được dữ liệu trên máy chủ, nhưng dữ liệu trên từng máy vẫn còn.
