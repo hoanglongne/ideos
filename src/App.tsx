@@ -3,6 +3,7 @@ import { BarChart3, Lightbulb, Plus, RotateCcw, Settings as SettingsIcon } from 
 import { useEffect, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { CaptureSheet } from './components/CaptureSheet'
+import { Coach } from './components/Coach'
 import { IdeaDetail } from './components/IdeaDetail'
 import { IdeaList } from './components/IdeaList'
 import { Mark } from './components/Mark'
@@ -89,7 +90,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [route.name])
 
-  const active = route.name === 'idea' ? 'list' : route.name
+  const active = route.name === 'idea' || route.name === 'coach' ? 'list' : route.name
   const openCapture = () => setCapture({})
 
   return (
@@ -148,6 +149,7 @@ export default function App() {
         )}
         {route.name === 'list' && <IdeaList query={query} onQuery={setQuery} searchRef={searchRef} onNew={openCapture} dueCount={dueCount ?? 0} />}
         {route.name === 'idea' && <IdeaDetail id={route.id} />}
+        {route.name === 'coach' && <Coach id={route.id} />}
         {route.name === 'review' && <Review />}
         {route.name === 'stats' && <Stats />}
         {route.name === 'settings' && <Settings installEvent={installEvent} onInstalled={() => setInstallEvent(null)} />}

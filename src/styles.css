@@ -2315,3 +2315,601 @@ details[open] > summary.block-head {
 .check-row input {
   margin-top: 1px;
 }
+
+/* ---------- pill phản bác ---------- */
+.tone-negative {
+  background: var(--pill-negative-bg);
+  color: var(--pill-negative-ink);
+}
+
+/* ---------- nút chọn nhỏ (trạng thái giả định, tín hiệu bằng chứng) ---------- */
+.mini-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--surface);
+}
+.mini-seg button {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.mini-seg button:hover {
+  color: var(--text);
+}
+.mini-seg button.on {
+  background: var(--raised);
+  color: var(--text);
+}
+.mini-seg button.on.tone-accent {
+  background: var(--accent-pale);
+  color: var(--accent-ink);
+}
+.mini-seg button.on.tone-positive {
+  background: var(--pill-positive-bg);
+  color: var(--pill-positive-ink);
+}
+.mini-seg button.on.tone-negative {
+  background: var(--pill-negative-bg);
+  color: var(--pill-negative-ink);
+}
+.mini-seg button.on.tone-muted {
+  background: var(--raised);
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* ---------- nhật ký ---------- */
+.journal {
+  display: grid;
+  gap: 20px;
+}
+.journal-add {
+  display: grid;
+  gap: 8px;
+}
+.journal-add textarea,
+.ev-add textarea,
+.coach-answer textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-field);
+  border: 1px solid var(--control);
+  background: var(--raised);
+  resize: vertical;
+  font-size: 15px;
+  line-height: 22px;
+}
+.journal-add-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 18px;
+}
+.timeline ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+.tl-day-label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.tl-day-label::first-letter {
+  text-transform: uppercase;
+}
+.tl-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 28px;
+  gap: 12px;
+  align-items: start;
+  padding: 8px 0 8px 14px;
+  border-left: 2px solid var(--rule);
+}
+.tl-entry.kind-coach,
+.tl-entry.kind-ai {
+  border-left-color: var(--accent);
+}
+.tl-time {
+  font-size: 13px;
+  color: var(--muted);
+  padding-top: 1px;
+}
+.tl-body p {
+  font-size: 15px;
+  line-height: 23px;
+}
+.tl-entry.kind-status .tl-body p {
+  color: var(--muted);
+  font-size: 14px;
+}
+.tl-kind {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+.tl-entry.kind-status .tl-kind {
+  color: var(--muted);
+}
+.tl-del {
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+.tl-entry:hover .tl-del,
+.tl-del:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .tl-del {
+    opacity: 0.6;
+  }
+}
+
+/* ---------- giả định ---------- */
+.assumptions,
+.evidence {
+  display: grid;
+  gap: 10px;
+}
+.assumption {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--surface);
+}
+.assumption.status-broken .as-text {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.as-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.as-text.editable {
+  font-weight: 500;
+  font-size: 15px;
+}
+.as-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.as-controls .mini-seg {
+  background: var(--active);
+}
+.as-ev {
+  font-size: 13px;
+}
+.as-test.editable {
+  margin-left: -10px;
+  font-size: 14px;
+  color: var(--text);
+}
+.as-test.editable:placeholder-shown {
+  color: var(--faint);
+}
+.add-row select {
+  flex: none;
+}
+
+/* ---------- bằng chứng ---------- */
+.ev {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--surface);
+}
+.ev-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.ev-del {
+  margin-left: auto;
+}
+.ev blockquote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--control);
+  font-size: 15px;
+  line-height: 23px;
+}
+.ev-link {
+  justify-self: start;
+  max-width: 100%;
+}
+.ev-mark {
+  justify-self: start;
+  font-size: 13px;
+}
+.ev-add {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+.ev-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ev-add-row input {
+  flex: 1 1 140px;
+}
+.ev-add-row select {
+  flex: 1 1 160px;
+}
+
+/* ---------- gợi ý trong màn chi tiết ---------- */
+.stage-hint {
+  margin: 4px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--accent-pale);
+  color: var(--accent-ink);
+}
+.stage-hint .text-btn {
+  color: inherit;
+}
+.coach-card {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.coach-card h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.ice-hint {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted);
+}
+.ice-hint b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- việc tiếp theo trên màn chính ---------- */
+.next-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+}
+.next-list li + li {
+  border-top: 1px solid var(--rule);
+}
+.next-list a {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+}
+.next-list li:first-child a {
+  padding-top: 0;
+}
+.next-text {
+  font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.next-list a:hover .next-text {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.next-meta {
+  font-size: 12px;
+  line-height: 16px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------- ghi tiếp vào ý tưởng có sẵn ---------- */
+.sheet-head .seg {
+  background: var(--surface);
+}
+.target-picker {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.target-list {
+  display: grid;
+  gap: 2px;
+  max-height: 216px;
+  overflow-y: auto;
+}
+.target {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+.target:hover {
+  background: var(--surface);
+}
+.target.on {
+  background: var(--active);
+}
+.target-title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.target .muted {
+  font-size: 12px;
+}
+.capture-input.short {
+  min-height: 96px;
+}
+
+/* ---------- mài ý tưởng ---------- */
+.coach-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .coach-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--gap);
+  }
+  .coach-grid > .coach-q {
+    grid-column: span 8;
+    padding-right: 24px;
+  }
+  .coach-side {
+    grid-column: span 4;
+  }
+}
+.coach-side {
+  display: grid;
+  gap: 12px;
+}
+.coach-side .panel-head {
+  margin-bottom: 0;
+}
+.coach-log {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.coach-log dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.coach-log dd {
+  margin: 2px 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.coach-state {
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+  font-size: 13px;
+}
+.coach-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 24px -10px;
+}
+.coach-bar .btn.ghost {
+  color: var(--muted);
+}
+.coach-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.coach-progress .progress-track {
+  width: clamp(48px, 20vw, 120px);
+}
+.coach-idea {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+.coach-q {
+  display: grid;
+  gap: 14px;
+}
+.coach-prompt {
+  margin: 0;
+  font: 400 24px/1.25 var(--serif);
+  letter-spacing: -0.005em;
+  text-wrap: pretty;
+}
+@media (min-width: 1024px) {
+  .coach-prompt {
+    font-size: 34px;
+    line-height: 1.2;
+  }
+}
+.coach-hint {
+  color: var(--muted);
+  max-width: 60ch;
+  font-size: 15px;
+  line-height: 23px;
+}
+.coach-answer {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+.coach-answer textarea {
+  font-size: 17px;
+  line-height: 26px;
+}
+.coach-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.pick-list {
+  display: grid;
+  gap: 6px;
+}
+.pick {
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--control);
+  background: var(--raised);
+  font-weight: 500;
+  cursor: pointer;
+}
+.pick.on {
+  border-color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text);
+}
+.coach-score {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--surface);
+}
+.coach-score-name {
+  font-weight: 500;
+}
+.coach-score-name b {
+  float: right;
+  font-size: 18px;
+}
+.coach-score-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.coach-summary {
+  display: grid;
+  gap: 12px;
+  margin: 8px 0;
+}
+.coach-summary div {
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--surface);
+}
+.coach-summary dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.coach-summary dd {
+  margin: 4px 0 0;
+  font-size: 15px;
+  line-height: 23px;
+}
+
+/* ---------- AI ---------- */
+.ai-panel {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.ai-panel .panel-head {
+  width: 100%;
+  margin-bottom: 0;
+}
+.ai-result {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+.ai-result h3 {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ai-result ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+.ai-assumptions {
+  list-style: none;
+  padding-left: 0 !important;
+}
+.ai-assumptions li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--rule);
+}
+.ai-assumptions li:first-child {
+  border-top: 0;
+}
+.ai-assumptions .text-btn {
+  flex: none;
+  font-size: 13px;
+}
+.ai-note {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--muted);
+}
+.att-transcribe {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.att-audio {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 44px;
+}

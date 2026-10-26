@@ -6,3 +6,4 @@ dev-dist
 .taste-skill
 .wrangler
 .dev.vars
+*.tsbuildinfo

@@ -22,6 +22,40 @@ export interface Task {
   done: boolean
 }
 
+/** Một dòng trong nhật ký: suy nghĩ thêm, kết quả một phiên mài, lời phản biện của AI, đổi giai đoạn… */
+export type JournalKind = 'note' | 'coach' | 'ai' | 'status'
+
+export interface JournalEntry {
+  id: string
+  at: number
+  kind: JournalKind
+  text: string
+}
+
+export type AssumptionStatus = 'untested' | 'testing' | 'holds' | 'broken'
+
+/** Điều phải đúng thì ý tưởng mới sống, kèm cách thử rẻ nhất. */
+export interface Assumption {
+  id: string
+  text: string
+  risk: 1 | 2 | 3 // 3 = sai thì ý tưởng chết
+  test: string
+  status: AssumptionStatus
+  createdAt: number
+}
+
+export type Signal = 'for' | 'against' | 'neutral'
+
+/** Một mẩu bằng chứng thật: câu nói của người dùng, một con số, một quan sát. */
+export interface Evidence {
+  id: string
+  at: number
+  text: string
+  source: string
+  signal: Signal
+  assumptionId?: string
+}
+
 export interface GeoStamp {
   lat: number
   lng: number
@@ -41,6 +75,9 @@ export interface Idea {
   tasks: Task[]
   links: string[]
   related: string[]
+  journal: JournalEntry[]
+  assumptions: Assumption[]
+  evidence: Evidence[]
   location?: GeoStamp
   createdAt: number
   updatedAt: number
@@ -86,6 +123,25 @@ export const STATUSES: { value: IdeaStatus; label: string; tone: StatusTone }[] 
 
 /** Các trạng thái còn "sống": được đưa vào hàng chờ ôn lại. */
 export const REVIEWABLE: IdeaStatus[] = ['spark', 'exploring', 'validating', 'building', 'parked']
+
+export const ASSUMPTION_STATUSES: { value: AssumptionStatus; label: string; tone: StatusTone }[] = [
+  { value: 'untested', label: 'Chưa thử', tone: 'neutral' },
+  { value: 'testing', label: 'Đang thử', tone: 'accent' },
+  { value: 'holds', label: 'Đúng', tone: 'positive' },
+  { value: 'broken', label: 'Sai', tone: 'muted' },
+]
+
+export const RISKS: { value: Assumption['risk']; label: string }[] = [
+  { value: 3, label: 'Rủi ro cao' },
+  { value: 2, label: 'Vừa' },
+  { value: 1, label: 'Thấp' },
+]
+
+export const SIGNALS: { value: Signal; label: string }[] = [
+  { value: 'for', label: 'Ủng hộ' },
+  { value: 'against', label: 'Phản bác' },
+  { value: 'neutral', label: 'Chưa rõ' },
+]
 
 export const CANVAS_FIELDS: { key: keyof Canvas; label: string; hint: string }[] = [
   { key: 'problem', label: 'Vấn đề', hint: 'Nỗi đau cụ thể là gì? Ai đang chịu?' },

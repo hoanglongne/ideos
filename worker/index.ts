@@ -6,10 +6,17 @@
  * Nội dung ý tưởng và đính kèm đã được mã hoá AES-GCM trên máy trước khi gửi.
  */
 
+import { briefText, CRITIQUE_PROMPT, extractJson, fakeCritique, fakeStructure, normCritique, normStructure, STRUCTURE_PROMPT, type IdeaBrief } from './ai-text'
+
 interface Env {
   DB: D1Database
   ASSETS: Fetcher
   MAX_VAULTS?: string
+  AI?: Ai
+  AI_FAKE?: string
+  AI_DAILY_LIMIT?: string
+  AI_TEXT_MODEL?: string
+  AI_ASR_MODEL?: string
 }
 
 const ROWS_PER_STATEMENT = 12 // D1 cho tối đa 100 tham số mỗi câu lệnh
@@ -219,9 +226,100 @@ async function createVault(env: Env, vault: string, req: Request) {
 
 async function deleteVault(env: Env, vault: string) {
   await env.DB.batch(
-    ['blobs', 'attachments', 'ideas'].map((t) => env.DB.prepare(`DELETE FROM ${t} WHERE vault = ?`).bind(vault)).concat(env.DB.prepare('DELETE FROM vaults WHERE id = ?').bind(vault)),
+    ['blobs', 'attachments', 'ideas', 'ai_usage'].map((t) => env.DB.prepare(`DELETE FROM ${t} WHERE vault = ?`).bind(vault)).concat(env.DB.prepare('DELETE FROM vaults WHERE id = ?').bind(vault)),
   )
   return json({ ok: true })
+}
+
+/* ---------- AI (Workers AI) ---------- */
+
+const DEFAULT_TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+const DEFAULT_ASR_MODEL = '@cf/openai/whisper-large-v3-turbo'
+// Gói Workers free chỉ cho 10 ms CPU mỗi request; chuyển base64 vài MB đã sát mức đó.
+// 2 MB ghi âm thoại (opus) là khoảng 10 phút nói, quá đủ cho một ý tưởng.
+const MAX_AUDIO = 2_000_000
+
+const aiEnabled = (env: Env) => !!env.AI || env.AI_FAKE === '1'
+const aiLimit = (env: Env) => Number(env.AI_DAILY_LIMIT ?? 30) || 30
+const today = () => new Date().toISOString().slice(0, 10)
+
+async function aiUsed(env: Env, vault: string) {
+  return (await env.DB.prepare('SELECT n FROM ai_usage WHERE vault = ? AND day = ?').bind(vault, today()).first<{ n: number }>())?.n ?? 0
+}
+
+/** Trừ một lượt trước khi gọi AI; AI lỗi thì trả lại lượt. */
+async function withQuota<T>(env: Env, vault: string, fn: () => Promise<T>): Promise<T> {
+  if (!aiEnabled(env)) throw new HttpError(501, 'Máy chủ này chưa bật AI')
+  const day = today()
+  const row = await env.DB.prepare('INSERT INTO ai_usage (vault, day, n) VALUES (?, ?, 1) ON CONFLICT (vault, day) DO UPDATE SET n = n + 1 RETURNING n')
+    .bind(vault, day)
+    .first<{ n: number }>()
+  const refund = () => env.DB.prepare('UPDATE ai_usage SET n = n - 1 WHERE vault = ? AND day = ?').bind(vault, day).run()
+  if ((row?.n ?? 0) > aiLimit(env)) {
+    await refund()
+    throw new HttpError(429, `Hôm nay đã dùng hết ${aiLimit(env)} lượt AI. Hạn mức mới bắt đầu lúc 7 giờ sáng.`)
+  }
+  try {
+    return await fn()
+  } catch (e) {
+    await refund()
+    if (e instanceof HttpError) throw e
+    console.error('AI lỗi', e)
+    throw new HttpError(502, 'AI đang trục trặc, thử lại sau ít phút. Lượt này không bị tính.')
+  }
+}
+
+/** Gọi model chữ và lấy về object JSON. Thử chế độ JSON trước; model không hỗ trợ thì gọi thường rồi tự tách. */
+async function runJson(env: Env, system: string, user: string): Promise<Record<string, unknown>> {
+  const model = (env.AI_TEXT_MODEL || DEFAULT_TEXT_MODEL) as Parameters<Ai['run']>[0]
+  const base = { messages: [{ role: 'system', content: system }, { role: 'user', content: user }], max_tokens: 1000, temperature: 0.3 }
+  let out: unknown
+  try {
+    out = await env.AI!.run(model, { ...base, response_format: { type: 'json_object' } } as never)
+  } catch {
+    out = await env.AI!.run(model, base as never)
+  }
+  const r = (out as { response?: unknown })?.response
+  if (r && typeof r === 'object') return r as Record<string, unknown>
+  return extractJson(String(r ?? ''))
+}
+
+async function aiStatus(env: Env, vault: string) {
+  const used = aiEnabled(env) ? await aiUsed(env, vault) : 0
+  return json({ enabled: aiEnabled(env), fake: env.AI_FAKE === '1', limit: aiLimit(env), used })
+}
+
+async function aiTranscribe(env: Env, vault: string, req: Request) {
+  const buf = new Uint8Array(await req.arrayBuffer())
+  if (!buf.length) throw new HttpError(400, 'Không có âm thanh')
+  if (buf.length > MAX_AUDIO) throw new HttpError(413, 'Đoạn ghi âm quá dài để chép lời (tối đa khoảng 10 phút)')
+  const text = await withQuota(env, vault, async () => {
+    if (env.AI_FAKE === '1') return `(AI giả khi chạy trên máy) Bản chép lời mẫu cho đoạn ghi âm ${Math.round(buf.length / 1024)} KB: ý tưởng app tìm bạn chạy bộ quanh hồ, ghép theo pace và giờ chạy.`
+    const model = (env.AI_ASR_MODEL || DEFAULT_ASR_MODEL) as Parameters<Ai['run']>[0]
+    // whisper-large-v3-turbo nhận base64; whisper đời cũ nhận mảng byte
+    let bin = ''
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000))
+    const input = /turbo|large/.test(String(model)) ? { audio: btoa(bin), language: 'vi' } : { audio: [...buf] }
+    const out = (await env.AI!.run(model, input as never)) as { text?: string }
+    return (out?.text ?? '').trim()
+  })
+  if (!text) throw new HttpError(422, 'Không nghe ra lời nào trong đoạn ghi âm')
+  return json({ text })
+}
+
+async function aiStructure(env: Env, vault: string, req: Request) {
+  const { text } = await readJson<{ text?: unknown }>(req)
+  if (typeof text !== 'string' || !text.trim()) throw new HttpError(400, 'Thiếu nội dung')
+  const result = await withQuota(env, vault, async () => (env.AI_FAKE === '1' ? fakeStructure(text) : normStructure(await runJson(env, STRUCTURE_PROMPT, text.slice(0, 6000)))))
+  return json(result)
+}
+
+async function aiCritique(env: Env, vault: string, req: Request) {
+  const { idea } = await readJson<{ idea?: IdeaBrief }>(req)
+  if (!idea || typeof idea.title !== 'string') throw new HttpError(400, 'Thiếu ý tưởng')
+  const result = await withQuota(env, vault, async () => (env.AI_FAKE === '1' ? fakeCritique(idea) : normCritique(await runJson(env, CRITIQUE_PROMPT, briefText(idea)))))
+  if (!result.weaknesses.length && !result.assumptions.length) throw new HttpError(502, 'AI không đưa ra được phản biện nào, thử lại sau.')
+  return json(result)
 }
 
 async function api(req: Request, env: Env, url: URL): Promise<Response> {
@@ -243,6 +341,10 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   if (rest === 'attachments' && m === 'POST') return pushAttachments(env, vault, req)
   if (rest === 'attachments' && m === 'GET') return pullAttachments(env, vault, url)
   if (rest === 'blobs/delete' && m === 'POST') return deleteBlobs(env, vault, req)
+  if (rest === 'ai' && m === 'GET') return aiStatus(env, vault)
+  if (rest === 'ai/transcribe' && m === 'POST') return aiTranscribe(env, vault, req)
+  if (rest === 'ai/structure' && m === 'POST') return aiStructure(env, vault, req)
+  if (rest === 'ai/critique' && m === 'POST') return aiCritique(env, vault, req)
   const blob = rest.match(/^blobs\/([\w-]{1,100})$/)
   if (blob && m === 'PUT') return putBlob(env, vault, blob[1], req)
   if (blob && m === 'GET') return getBlob(env, vault, blob[1])

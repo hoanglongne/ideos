@@ -1,20 +1,27 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowLeft, Copy, MapPin, Pin, Share2, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { db, deleteIdea, linkIdeas, removeAttachment, restoreIdea, updateIdea } from '../db'
+import { db, deleteIdea, linkIdeas, newIdea, removeAttachment, restoreIdea, updateIdea } from '../db'
 import { ideaToMarkdown } from '../lib/backup'
+import { suggestConfidence, type ConfidenceHint } from '../lib/insight'
 import { back, go } from '../lib/router'
 import { fold, iceScore, kindMeta, matchesQuery, timeAgo, uid } from '../lib/util'
 import { CANVAS_FIELDS, KINDS, STATUSES, type Idea, type Scores } from '../types'
+import { AiCritiquePanel, isRawIdea, useTranscribe } from './AiPanel'
 import { AttachmentList } from './Attachments'
+import { Assumptions, EvidenceList } from './Assumptions'
+import { Journal } from './Journal'
 import { EditableText } from './Editable'
-import { MediaTools } from './MediaTools'
 import { useToast } from './Toast'
+
+/** Hook phải gọi trước khi biết ý tưởng có tồn tại hay không. */
+const PLACEHOLDER = newIdea({ id: '' })
 
 export function IdeaDetail({ id }: { id: string }) {
   const idea = useLiveQuery(() => db.ideas.get(id), [id], null)
   const atts = useLiveQuery(() => db.attachments.where('ideaId').equals(id).sortBy('createdAt'), [id], [])
   const toast = useToast()
+  const tr = useTranscribe(idea ?? PLACEHOLDER)
 
   if (idea === null) return null
   if (!idea)
@@ -29,6 +36,14 @@ export function IdeaDetail({ id }: { id: string }) {
     )
 
   const set = (changes: Partial<Idea>) => updateIdea(id, changes)
+
+  /** Đổi giai đoạn và ghi lại vào nhật ký, để thấy ý tưởng đã đi qua những bước nào. */
+  const setStatus = (status: Idea['status']) => {
+    if (status === idea.status) return
+    const from = STATUSES.find((s) => s.value === idea.status)!.label
+    const to = STATUSES.find((s) => s.value === status)!.label
+    set({ status, journal: [...idea.journal, { id: uid(), at: Date.now(), kind: 'status', text: `Chuyển từ “${from}” sang “${to}”.` }] })
+  }
 
   const remove = async () => {
     const snap = await deleteIdea(id)
@@ -101,19 +116,71 @@ export function IdeaDetail({ id }: { id: string }) {
 
           <div className="status-track" role="radiogroup" aria-label="Giai đoạn">
             {STATUSES.map((s) => (
-              <button key={s.value} role="radio" aria-checked={idea.status === s.value} className={'status-opt' + (idea.status === s.value ? ' on tone-' + s.tone : '')} onClick={() => set({ status: s.value })}>
+              <button key={s.value} role="radio" aria-checked={idea.status === s.value} className={'status-opt' + (idea.status === s.value ? ' on tone-' + s.tone : '')} onClick={() => setStatus(s.value)}>
                 {s.label}
               </button>
             ))}
           </div>
 
-          <EditableText className="body-input" value={idea.body} onSave={(body) => set({ body })} placeholder="Ghi chú thêm: chi tiết, ai cần nó, vì sao bạn nghĩ tới…" ariaLabel="Ghi chú" />
+          {idea.status === 'validating' && idea.assumptions.length === 0 && (
+            <p className="stage-hint">
+              Đang kiểm chứng nhưng chưa có giả định nào để thử.{' '}
+              <a className="text-btn" href={`#/idea/${id}/coach`}>
+                Mài ý tưởng để tìm giả định
+              </a>
+            </p>
+          )}
 
-          <AttachmentList items={atts} onRemove={(i) => removeAttachment(atts[i].id)} />
-          <MediaTools
-            onText={(t) => set({ body: (idea.body ? idea.body.trimEnd() + ' ' : '') + t })}
-            onAttach={(a) => db.attachments.add({ ...a, id: uid(), ideaId: id, createdAt: Date.now() })}
+          <EditableText className="body-input" value={idea.body} onSave={(body) => set({ body })} placeholder="Mô tả ý tưởng: nó là gì, cho ai, vì sao bạn nghĩ tới…" ariaLabel="Mô tả" />
+
+          {tr.ready && isRawIdea(idea) && atts.some((a) => a.type === 'audio') && (
+            <p className="stage-hint">
+              Ý tưởng này mới chỉ có ghi âm.{' '}
+              <button className="text-btn" disabled={!!tr.busyId} onClick={() => tr.run(atts.find((a) => a.type === 'audio')!)}>
+                {tr.busyId ? 'AI đang nghe…' : 'Chép lời và sắp xếp bằng AI'}
+              </button>
+            </p>
+          )}
+
+          <AttachmentList
+            items={atts}
+            onRemove={(i) => removeAttachment(atts[i].id)}
+            extra={(a) =>
+              a.type === 'audio' && tr.ready ? (
+                <button className="text-btn att-transcribe" disabled={!!tr.busyId} onClick={() => tr.run(a)}>
+                  {tr.busyId === a.id ? 'Đang chép…' : 'Chép lời'}
+                </button>
+              ) : null
+            }
           />
+
+          <section className="block" aria-labelledby="journal-h">
+            <div className="block-head">
+              <h2 id="journal-h">Nhật ký</h2>
+              {idea.journal.length > 0 && <span className="muted num">{idea.journal.length} ghi chú</span>}
+            </div>
+            <Journal idea={idea} />
+          </section>
+
+          <section className="block" aria-labelledby="as-h">
+            <div className="block-head">
+              <h2 id="as-h">Giả định</h2>
+              {idea.assumptions.length > 0 && (
+                <span className="muted num">
+                  {idea.assumptions.filter((a) => a.status === 'holds' || a.status === 'broken').length}/{idea.assumptions.length} đã thử
+                </span>
+              )}
+            </div>
+            <Assumptions idea={idea} onCoach={() => go(`/idea/${id}/coach`)} />
+          </section>
+
+          <section className="block" aria-labelledby="ev-h">
+            <div className="block-head">
+              <h2 id="ev-h">Bằng chứng</h2>
+              {idea.evidence.length > 0 && <span className="muted num">{idea.evidence.length}</span>}
+            </div>
+            <EvidenceList idea={idea} />
+          </section>
 
           <section className="block" aria-labelledby="tasks-h">
             <div className="block-head">
@@ -144,12 +211,20 @@ export function IdeaDetail({ id }: { id: string }) {
         </div>
 
         <aside className="detail-side">
+          <section className="panel coach-card" aria-labelledby="coach-h">
+            <h2 id="coach-h">Mài ý tưởng</h2>
+            <p className="panel-note">{coachPitch(idea)}</p>
+            <a className="btn primary" href={`#/idea/${id}/coach`}>
+              Bắt đầu mài
+            </a>
+          </section>
           <section className="panel" aria-labelledby="ice-h">
             <div className="panel-head">
               <h2 id="ice-h">Điểm ICE</h2>
             </div>
-            <IceScorer scores={idea.scores} onChange={(key, v) => updateIdea(id, { [`scores.${key}`]: v })} />
+            <IceScorer scores={idea.scores} hint={suggestConfidence(idea)} onChange={(key, v) => updateIdea(id, { [`scores.${key}`]: v })} />
           </section>
+          <AiCritiquePanel idea={idea} />
           <section className="panel" aria-labelledby="tags-h">
             <div className="panel-head">
               <h2 id="tags-h">Tag</h2>
@@ -216,13 +291,21 @@ function TagEditor({ tags, onChange }: { tags: string[]; onChange: (t: string[])
   )
 }
 
+/** Lời mời mài ý tưởng, nói đúng chỗ ý tưởng đang thiếu. */
+function coachPitch(idea: Idea) {
+  if (!idea.canvas.problem.trim()) return 'Chưa rõ vấn đề cụ thể là gì. 5 câu hỏi ngắn sẽ giúp bạn nói được ai đang đau và vì sao.'
+  if (!idea.assumptions.length) return 'Đã có vấn đề, nhưng chưa ghi ra điều gì phải đúng. Mài để tìm giả định rủi ro nhất và cách thử nó.'
+  if (!idea.evidence.length) return 'Đã có giả định, chưa có bằng chứng. Mài để chọn một phép thử làm được trong tuần này.'
+  return 'Ôn lại ý tưởng với vài câu hỏi theo giai đoạn hiện tại. Câu trả lời tự vào canvas, giả định và nhật ký.'
+}
+
 const ICE_LABELS: { key: keyof Scores; label: string; hint: string }[] = [
   { key: 'impact', label: 'Tác động', hint: 'Giá trị nếu thành công' },
   { key: 'confidence', label: 'Tự tin', hint: 'Khả năng nó hiệu quả' },
   { key: 'ease', label: 'Dễ làm', hint: '10 là vài ngày xong' },
 ]
 
-function IceScorer({ scores, onChange }: { scores: Scores; onChange: (key: keyof Scores, v: number) => void }) {
+function IceScorer({ scores, hint, onChange }: { scores: Scores; hint: ConfidenceHint | null; onChange: (key: keyof Scores, v: number) => void }) {
   const total = iceScore({ scores })
   return (
     <div className="ice">
@@ -238,6 +321,14 @@ function IceScorer({ scores, onChange }: { scores: Scores; onChange: (key: keyof
           </span>
           <span className={'ice-val num' + (scores[f.key] ? '' : ' none')}>{scores[f.key] || '—'}</span>
           <input type="range" min={0} max={10} value={scores[f.key]} onChange={(e) => onChange(f.key, +e.target.value)} aria-label={f.label} />
+          {f.key === 'confidence' && hint && hint.value !== scores.confidence && (
+            <span className="ice-hint">
+              Từ bằng chứng: <b className="num">{hint.value}</b> ({hint.reason}).{' '}
+              <button type="button" className="text-btn" onClick={() => onChange('confidence', hint.value)}>
+                Dùng
+              </button>
+            </span>
+          )}
         </label>
       ))}
     </div>

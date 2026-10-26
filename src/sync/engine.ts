@@ -1,5 +1,5 @@
 import type { IdeosDB } from '../db'
-import { stripSync } from '../db'
+import { mergeIdeas, normalizeIdea, stripSync } from '../db'
 import type { Attachment, AttachmentType, Idea } from '../types'
 
 /* Hàng dữ liệu phía server. `seq` do server gán, tăng theo thứ tự commit, dùng làm con trỏ kéo về. */
@@ -73,7 +73,9 @@ const toRemoteAtt = (a: Attachment): Push<RemoteAttachment> => ({
   deleted: false,
 })
 
-/** Một vòng đồng bộ đầy đủ: đẩy thay đổi cục bộ rồi kéo thay đổi từ server. */
+const listSize = (i: Idea) => i.journal.length + i.assumptions.length + i.evidence.length + i.tasks.length + i.related.length
+
+/** Một vòng đồng bộ đầy đủ: kéo thay đổi từ server (gộp với thay đổi trên máy), rồi đẩy thay đổi cục bộ lên. */
 export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncResult> {
   let pushed = 0
   let pulled = 0
@@ -87,6 +89,83 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
       await setMeta(db, META.scope, remote.scope)
     })
   }
+
+  /* ---------- kéo về trước, để gộp được với thay đổi trên máy trước khi đẩy lên ---------- */
+
+  const ideaCursor = (await getMeta<number>(db, META.ideas)) ?? 0
+  const ideaRows = await remote.pullIdeas(ideaCursor)
+  if (ideaRows.length) {
+    await db.transaction('rw', [db.ideas, db.tombstones, db.meta], async () => {
+      let cursor = ideaCursor
+      for (const row of ideaRows) {
+        cursor = Math.max(cursor, row.seq)
+        const local = await db.ideas.get(row.id)
+        if (row.deleted || !row.data) {
+          if (local && local.updatedAt <= row.updatedAt) {
+            await db.ideas.delete(row.id)
+            pulled++
+          }
+          continue
+        }
+        const t = await db.tombstones.get(`ideas:${row.id}`)
+        if (t && t.deletedAt >= row.updatedAt) continue
+        const incoming = normalizeIdea({ ...row.data, updatedAt: row.updatedAt })
+        if (local?.dirty === 1) {
+          // Cả máy này và máy khác cùng sửa khi chưa đồng bộ: gộp danh sách theo id,
+          // trường đơn lẻ theo bản mới hơn. Nếu bản gộp có thêm gì từ máy này thì giữ "dirty" để đẩy lên.
+          const remoteNewer = row.updatedAt > local.updatedAt
+          const merged = remoteNewer ? mergeIdeas(incoming, stripSync(local)) : mergeIdeas(stripSync(local), incoming)
+          const base = remoteNewer ? incoming : stripSync(local)
+          if (listSize(merged) > listSize(base)) {
+            await db.ideas.put({ ...merged, updatedAt: Math.max(Date.now(), row.updatedAt + 1, local.updatedAt), dirty: 1 })
+            pulled++
+          } else if (remoteNewer) {
+            await db.ideas.put({ ...incoming, dirty: 0, _remote: true })
+            pulled++
+          }
+        } else if (!local || row.updatedAt > local.updatedAt) {
+          await db.ideas.put({ ...incoming, dirty: 0, _remote: true })
+          pulled++
+        }
+      }
+      await setMeta(db, META.ideas, cursor)
+    })
+  }
+
+  const attCursor = (await getMeta<number>(db, META.atts)) ?? 0
+  const attRows = await remote.pullAttachments(attCursor)
+  let cursor = attCursor
+  for (const row of attRows) {
+    if (row.deleted) {
+      if (await db.attachments.get(row.id)) {
+        await db.attachments.delete(row.id)
+        pulled++
+      }
+    } else if (!(await db.attachments.get(row.id)) && !(await db.tombstones.get(`attachments:${row.id}`))) {
+      let blob: Blob
+      try {
+        blob = await remote.downloadBlob(row.id)
+        if (!blob.type && row.mime) blob = new Blob([blob], { type: row.mime })
+      } catch {
+        break // tải lại ở lần sau, không tiến con trỏ qua hàng này
+      }
+      await db.attachments.put({
+        id: row.id,
+        ideaId: row.ideaId,
+        type: row.type,
+        mime: row.mime,
+        blob,
+        createdAt: row.createdAt,
+        ...(row.duration != null ? { duration: row.duration } : {}),
+        dirty: 0,
+        _remote: true,
+      })
+      pulled++
+    }
+    cursor = Math.max(cursor, row.seq)
+  }
+  if (cursor !== attCursor) await setMeta(db, META.atts, cursor)
+
 
   /* ---------- đẩy lên ---------- */
 
@@ -133,67 +212,6 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
     })
     pushed += tombs.length
   }
-
-  /* ---------- kéo về ---------- */
-
-  const ideaCursor = (await getMeta<number>(db, META.ideas)) ?? 0
-  const ideaRows = await remote.pullIdeas(ideaCursor)
-  if (ideaRows.length) {
-    await db.transaction('rw', [db.ideas, db.tombstones, db.meta], async () => {
-      let cursor = ideaCursor
-      for (const row of ideaRows) {
-        cursor = Math.max(cursor, row.seq)
-        const local = await db.ideas.get(row.id)
-        if (row.deleted || !row.data) {
-          if (local && local.updatedAt <= row.updatedAt) {
-            await db.ideas.delete(row.id)
-            pulled++
-          }
-          continue
-        }
-        const t = await db.tombstones.get(`ideas:${row.id}`)
-        if (t && t.deletedAt >= row.updatedAt) continue
-        if (!local || row.updatedAt > local.updatedAt) {
-          await db.ideas.put({ ...row.data, updatedAt: row.updatedAt, _remote: true })
-          pulled++
-        }
-      }
-      await setMeta(db, META.ideas, cursor)
-    })
-  }
-
-  const attCursor = (await getMeta<number>(db, META.atts)) ?? 0
-  const attRows = await remote.pullAttachments(attCursor)
-  let cursor = attCursor
-  for (const row of attRows) {
-    if (row.deleted) {
-      if (await db.attachments.get(row.id)) {
-        await db.attachments.delete(row.id)
-        pulled++
-      }
-    } else if (!(await db.attachments.get(row.id)) && !(await db.tombstones.get(`attachments:${row.id}`))) {
-      let blob: Blob
-      try {
-        blob = await remote.downloadBlob(row.id)
-        if (!blob.type && row.mime) blob = new Blob([blob], { type: row.mime })
-      } catch {
-        break // tải lại ở lần sau, không tiến con trỏ qua hàng này
-      }
-      await db.attachments.put({
-        id: row.id,
-        ideaId: row.ideaId,
-        type: row.type,
-        mime: row.mime,
-        blob,
-        createdAt: row.createdAt,
-        ...(row.duration != null ? { duration: row.duration } : {}),
-        _remote: true,
-      })
-      pulled++
-    }
-    cursor = Math.max(cursor, row.seq)
-  }
-  if (cursor !== attCursor) await setMeta(db, META.atts, cursor)
 
   return { pushed, pulled }
 }
