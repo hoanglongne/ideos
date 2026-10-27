@@ -1,3 +1,7 @@
+import { money } from './money/format'
+import { MODELS } from './money/models'
+import { summarize } from './money/plan'
+import { verdict } from './money/sensitivity'
 import { db, stripSync } from '../db'
 import type { Attachment, Idea } from '../types'
 import { ASSUMPTION_STATUSES, CANVAS_FIELDS, RISKS, SIGNALS, STATUSES } from '../types'
@@ -73,6 +77,11 @@ export function ideaToMarkdown(idea: Idea): string {
   if (idea.tasks.length) {
     out.push('', '**Việc cần làm:**')
     for (const t of idea.tasks) out.push(`- [${t.done ? 'x' : ' '}] ${t.text}`)
+  }
+  if (idea.money) {
+    const i = idea.money.inputs
+    out.push('', `**Bài toán tiền** (${MODELS[i.model].name}): ${verdict(i, summarize(i)).text}`)
+    out.push(`- ${MODELS[i.model].priceLabel}: ${money(i.price, i.currency)} · chi phí kéo một khách: ${money(i.cac, i.currency)} · chi phí cố định: ${money(i.fixed_cost, i.currency)}/tháng`)
   }
   if (idea.assumptions.length) {
     out.push('', '**Giả định:**')
