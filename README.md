@@ -24,6 +24,8 @@ PWA offline-first: cài lên màn hình chính, mở tức thì, ghi được c�
   chưa phải số của bạn có viền nét đứt và ghi "ước lượng". App làm xấu từng con số đi 30% để xem con số nào làm đổ kế
   hoạch nhanh nhất, rồi thêm thẳng vào danh sách giả định kèm mức rủi ro và cách thử. Kế hoạch chưa hoà vốn thì
   Confidence không vượt 5. Công thức port rút gọn từ dự án observer ("Sổ Cái"); dữ liệu nằm trong ý tưởng nên đồng bộ như mọi thứ khác.
+  Khi ý tưởng chuyển sang "Đang làm" hoặc "Đã ra mắt", nút **Tải file cho Sổ Cái** xuất kế hoạch thành file mà Sổ Cái
+  nhập được (⚙ → Sao lưu & nhập file → Nhập → Gộp), để mỗi tháng so kế hoạch với số thật. Xuất lại thì cập nhật cùng dự án.
 - **Việc tiếp theo:** màn chính gom việc nên làm trên mọi ý tưởng, thử giả định rủi ro cao trước.
 - **AI (Workers AI, miễn phí):** chép lời ghi âm và tự sắp xếp ý tưởng chỉ có ghi âm thành tiêu đề, mô tả, vấn đề;
   "AI phản biện" chỉ ra điểm yếu, giả định chưa ghi, câu nên hỏi người dùng. Chỉ gửi khi bạn bấm; cần bật đồng bộ.
@@ -140,7 +142,7 @@ src/
   sync/              engine đồng bộ, mã hoá, adapter Cloudflare, quản lý mã & lịch đồng bộ, gọi AI
   lib/coach.ts       bộ câu hỏi mài ý tưởng và cách chọn câu tiếp theo
   lib/insight.ts     gợi ý độ tự tin từ bằng chứng, việc tiếp theo, độ chín của ý tưởng
-  lib/money/         bài toán tiền: mô hình kinh doanh, mô phỏng, độ nhạy (con số nào làm đổ kế hoạch)
+  lib/money/         bài toán tiền: mô hình kinh doanh, mô phỏng, độ nhạy, xuất sang Sổ Cái
   components/        CaptureSheet, IdeaList, IdeaDetail, Review, Stats, Settings, SyncPanel, Sketch…
 worker/index.ts      máy chủ: phục vụ app tĩnh + API /api/v1 trên D1 + AI
 worker/ai-text.ts    lời nhắc cho AI, tách và làm sạch JSON model trả về

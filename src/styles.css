@@ -3155,3 +3155,22 @@ details[open] > summary.block-head {
     grid-column: 1 / -1;
   }
 }
+
+.money-handoff {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding-top: 6px;
+}
+.money-handoff.live {
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--accent-pale);
+  color: var(--accent-ink);
+}
+.money-handoff.live .money-note {
+  color: var(--accent-ink);
+}
+.money-handoff .money-adv {
+  justify-self: stretch;
+}

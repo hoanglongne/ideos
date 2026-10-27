@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { patchIdea, updateIdea } from '../db'
+import { addJournal, patchIdea, updateIdea } from '../db'
+import { observerFileName, toObserverFile } from '../lib/money/export'
 import { money, moneyShort, num } from '../lib/money/format'
 import { fieldsFor, MODEL_IDS, MODELS, newMoneyPlan, switchModel, type Currency, type GoalType, type InputKey, type MoneyPlan, type PlanInputs } from '../lib/money/models'
 import { simulate, summarize, type PlanRow } from '../lib/money/plan'
 import { sensitivities, verdict, WORSEN, type Sensitivity } from '../lib/money/sensitivity'
-import { uid } from '../lib/util'
+import { downloadBlob, uid } from '../lib/util'
 import { RISKS, type Assumption, type Idea } from '../types'
 import { useToast } from './Toast'
 
@@ -196,6 +197,32 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
     toast(`Đã thêm ${fresh.length} giả định`)
   }
 
+  const exportToLedger = () => {
+    downloadBlob(new Blob([JSON.stringify(toObserverFile(idea), null, 2)], { type: 'application/json' }), observerFileName(idea))
+    addJournal(idea.id, 'Đã xuất kế hoạch tiền sang Sổ Cái để theo dõi số thật mỗi tháng.')
+    toast('Đã tải file. Mở Sổ Cái và nhập file này.')
+  }
+  const live = idea.status === 'building' || idea.status === 'shipped'
+  const handoff = (
+    <div className={'money-handoff' + (live ? ' live' : '')}>
+      <h3 className="money-h">Chuyển sang Sổ Cái</h3>
+      <p className="money-note">
+        {live
+          ? 'Ý tưởng đã thành sản phẩm thật. Đưa kế hoạch này sang Sổ Cái để mỗi tháng nhập số thật và đặt cạnh kế hoạch, thấy ngay chỗ nào lệch.'
+          : 'Khi ý tưởng thành sản phẩm thật, đưa kế hoạch này sang Sổ Cái để mỗi tháng so với số thật.'}
+      </p>
+      <button className={live ? 'btn primary' : 'btn'} onClick={exportToLedger}>
+        Tải file cho Sổ Cái
+      </button>
+      <details className="money-adv">
+        <summary>Cách nhập vào Sổ Cái</summary>
+        <p className="money-note">
+          Trong Sổ Cái: ⚙ → Sao lưu &amp; nhập file → Nhập → Chọn file… rồi chọn <b>Gộp</b>. Xuất lại lần sau sẽ cập nhật cùng một dự án và kế hoạch, số thật bạn đã nhập ở Sổ Cái không bị đụng tới.
+        </p>
+      </details>
+    </div>
+  )
+
   const maxLoss = Math.max(1, ...sens.map((r) => r.loss))
   const top = sens.slice(0, 5)
 
@@ -231,6 +258,8 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
       <p className={'money-verdict tone-' + v.tone} role="status">
         {v.text}
       </p>
+
+      {live && handoff}
 
       <div className="money-stats">
         <Stat label="Khách để hoà vốn" value={s.breakEvenCustomers.value == null ? '—' : num(s.breakEvenCustomers.value)} sub={s.breakEvenCustomers.value == null ? 'Chưa tính được' : t.customer + ' đang hoạt động'} />
@@ -315,6 +344,8 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
           </button>
         </>
       )}
+
+      {!live && handoff}
     </div>
   )
 }
