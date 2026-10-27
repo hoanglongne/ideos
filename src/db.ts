@@ -177,6 +177,18 @@ export async function updateIdea(id: string, changes: Partial<Idea> | Record<str
   await d.ideas.update(id, { ...changes, updatedAt: Date.now() } as Partial<Idea>)
 }
 
+/**
+ * Sửa dựa trên bản mới nhất trong cơ sở dữ liệu, không phải bản đang hiện trên màn hình.
+ * Dùng khi gõ liên tục vào ô số: hai lần sửa sát nhau không đè mất nhau.
+ */
+export async function patchIdea(id: string, fn: (idea: Idea) => Partial<Idea> | null, d: IdeosDB = db) {
+  await d.transaction('rw', d.ideas, async () => {
+    const idea = await d.ideas.get(id)
+    const changes = idea && fn(idea)
+    if (changes) await updateIdea(id, changes, d)
+  })
+}
+
 const tomb = (table: Tombstone['table'], id: string, deletedAt = Date.now()): Tombstone => ({ key: `${table}:${id}`, table, id, deletedAt })
 
 /** Xoá ý tưởng và trả về snapshot để có thể hoàn tác. */

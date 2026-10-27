@@ -1530,11 +1530,13 @@ details[open] > summary.block-head {
 }
 .add-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
 }
 .add-row input {
-  flex: 1;
+  flex: 1 1 160px;
+  min-width: 0;
 }
 .suggest {
   margin-top: 8px;
@@ -2912,4 +2914,263 @@ details[open] > summary.block-head {
   flex-wrap: wrap;
   height: auto;
   min-height: 44px;
+}
+
+/* ---------- bài toán tiền ---------- */
+.money {
+  display: grid;
+  gap: 14px;
+}
+.money-start .panel-note {
+  margin-bottom: 12px;
+}
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+.model-opt {
+  min-height: var(--control-height);
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.model-opt:hover {
+  background: var(--active);
+}
+.money-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.money-bar .text-btn {
+  margin-left: auto;
+}
+.money-verdict {
+  margin: 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--control);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.money-verdict.tone-negative {
+  border-left-color: var(--negative);
+}
+.money-verdict.tone-positive {
+  border-left-color: var(--positive);
+}
+.money-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.money-stat {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--surface);
+}
+.money-stat-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.money-stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.money-stat-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.money-note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.cash-chart {
+  margin: 0;
+}
+.cash-chart svg {
+  display: block;
+  width: 100%;
+  height: 96px;
+  overflow: visible;
+}
+.cash-zero {
+  stroke: var(--control);
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+.cash-line {
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.cash-line.pos {
+  stroke: var(--positive);
+}
+.cash-line.neg {
+  stroke: var(--negative);
+}
+.cash-chart figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.money-h {
+  margin: 6px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.money-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.money-field {
+  display: grid;
+  gap: 4px;
+}
+.money-field label {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.money-field input {
+  height: var(--control-height);
+  padding: 0 12px;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-field);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+}
+.money-field.assumed input {
+  border-style: dashed;
+}
+.money-hint {
+  min-height: 16px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.money-est {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-style: italic;
+}
+.money-goal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.money-goal-label {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.money-adv summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.sens {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.sens-row {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--surface);
+}
+.sens-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.sens-label {
+  font-weight: 600;
+}
+.sens-risk {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.sens-risk.risk-3 {
+  color: var(--negative);
+}
+.sens-risk.risk-2 {
+  color: var(--pill-warning-ink);
+}
+.sens-risk.risk-1 {
+  color: var(--muted);
+}
+.sens-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--active);
+}
+.sens-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--negative);
+}
+.sens-text,
+.sens-claim {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.sens-claim {
+  color: var(--muted);
+}
+@media (min-width: 720px) {
+  .money-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .money-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .money-fields .money-note {
+    grid-column: 1 / -1;
+  }
+}
+
+.money-handoff {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding-top: 6px;
+}
+.money-handoff.live {
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--accent-pale);
+  color: var(--accent-ink);
+}
+.money-handoff.live .money-note {
+  color: var(--accent-ink);
+}
+.money-handoff .money-adv {
+  justify-self: stretch;
 }

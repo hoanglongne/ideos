@@ -11,6 +11,7 @@ import { AiCritiquePanel, isRawIdea, useTranscribe } from './AiPanel'
 import { AttachmentList } from './Attachments'
 import { Assumptions, EvidenceList } from './Assumptions'
 import { Journal } from './Journal'
+import { MoneyPanel } from './MoneyPanel'
 import { EditableText } from './Editable'
 import { useToast } from './Toast'
 
@@ -172,6 +173,13 @@ export function IdeaDetail({ id }: { id: string }) {
               )}
             </div>
             <Assumptions idea={idea} onCoach={() => go(`/idea/${id}/coach`)} />
+          </section>
+
+          <section className="block" aria-labelledby="money-h">
+            <div className="block-head">
+              <h2 id="money-h">Bài toán tiền</h2>
+            </div>
+            <MoneyPanel idea={idea} />
           </section>
 
           <section className="block" aria-labelledby="ev-h">

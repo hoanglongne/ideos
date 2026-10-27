@@ -1,3 +1,5 @@
+import type { MoneyPlan } from './lib/money/models'
+
 export type IdeaKind = 'web' | 'app' | 'startup' | 'product' | 'feature' | 'other'
 export type IdeaStatus = 'spark' | 'exploring' | 'validating' | 'building' | 'shipped' | 'parked' | 'dropped'
 
@@ -42,6 +44,8 @@ export interface Assumption {
   test: string
   status: AssumptionStatus
   createdAt: number
+  /** Giả định sinh từ bài toán tiền: ghi lại con số nào để không thêm trùng */
+  key?: string
 }
 
 export type Signal = 'for' | 'against' | 'neutral'
@@ -78,6 +82,8 @@ export interface Idea {
   journal: JournalEntry[]
   assumptions: Assumption[]
   evidence: Evidence[]
+  /** Bài toán tiền: các con số giả định và kết quả tính từ chúng */
+  money?: MoneyPlan
   location?: GeoStamp
   createdAt: number
   updatedAt: number

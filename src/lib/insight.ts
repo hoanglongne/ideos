@@ -1,4 +1,5 @@
 import type { Idea } from '../types'
+import { summarize } from './money/plan'
 import { iceScore } from './util'
 
 export interface ConfidenceHint {
@@ -10,10 +11,11 @@ export interface ConfidenceHint {
  * Gợi ý điểm Confidence (1–10) từ những gì đã kiểm chứng, thay vì cảm giác:
  * giả định đúng kéo lên, giả định sai kéo xuống (nặng nhẹ theo rủi ro), bằng chứng cộng trừ nhẹ hơn.
  * Còn giả định rủi ro cao chưa thử thì không cho vượt 6: chưa biết điều quan trọng nhất có đúng không.
+ * Bài toán tiền chưa hoà vốn (hoặc mỗi khách lỗ) thì không cho vượt 5: dù thử đúng, con số vẫn chưa đứng được.
  */
-export function suggestConfidence(idea: Pick<Idea, 'assumptions' | 'evidence'>): ConfidenceHint | null {
+export function suggestConfidence(idea: Pick<Idea, 'assumptions' | 'evidence'> & { money?: Idea['money'] }): ConfidenceHint | null {
   const { assumptions, evidence } = idea
-  if (!assumptions.length && !evidence.length) return null
+  if (!assumptions.length && !evidence.length && !idea.money) return null
   const holds = assumptions.filter((a) => a.status === 'holds')
   const broken = assumptions.filter((a) => a.status === 'broken')
   const pro = evidence.filter((e) => e.signal === 'for').length
@@ -26,6 +28,8 @@ export function suggestConfidence(idea: Pick<Idea, 'assumptions' | 'evidence'>):
   v += Math.min(3, pro * 0.5) - con * 0.75
   const riskyOpen = assumptions.some((a) => a.risk === 3 && (a.status === 'untested' || a.status === 'testing'))
   if (riskyOpen) v = Math.min(v, 6)
+  const moneyFails = !!idea.money && moneyDoesNotWork(idea.money.inputs)
+  if (moneyFails) v = Math.min(v, 5)
   const value = Math.max(1, Math.min(10, Math.round(v)))
 
   const parts: string[] = []
@@ -34,7 +38,13 @@ export function suggestConfidence(idea: Pick<Idea, 'assumptions' | 'evidence'>):
   if (pro) parts.push(`${pro} bằng chứng ủng hộ`)
   if (con) parts.push(`${con} phản bác`)
   if (riskyOpen) parts.push('còn giả định rủi ro cao chưa thử')
+  if (moneyFails) parts.push('bài toán tiền chưa hoà vốn')
   return { value, reason: parts.join(', ') || 'chưa có giả định nào được thử' }
+}
+
+function moneyDoesNotWork(inputs: NonNullable<Idea['money']>['inputs']) {
+  const s = summarize(inputs)
+  return s.unit.contribution <= 0 || s.breakEvenMonth == null || (s.ltvCac.value != null && s.ltvCac.value < 1)
 }
 
 export interface NextAction {
