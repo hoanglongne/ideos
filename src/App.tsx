@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { BarChart3, Lightbulb, Plus, RotateCcw, Settings as SettingsIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
+import { BackupNudge } from './components/BackupNudge'
 import { CaptureSheet } from './components/CaptureSheet'
 import { Coach } from './components/Coach'
 import { IdeaDetail } from './components/IdeaDetail'
@@ -147,6 +148,7 @@ export default function App() {
             </button>
           </div>
         )}
+        {!IS_DEMO && <BackupNudge />}
         {route.name === 'list' && <IdeaList query={query} onQuery={setQuery} searchRef={searchRef} onNew={openCapture} dueCount={dueCount ?? 0} />}
         {route.name === 'idea' && <IdeaDetail id={route.id} />}
         {route.name === 'coach' && <Coach id={route.id} />}

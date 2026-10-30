@@ -3182,3 +3182,13 @@ details[open] > summary.block-head {
   color: var(--negative);
   font-style: normal;
 }
+
+.nudge {
+  flex-wrap: wrap;
+}
+.nudge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

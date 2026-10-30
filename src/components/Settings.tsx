@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { clearAll } from '../db'
 import { exportJson, exportMarkdown, importJson } from '../lib/backup'
+import { backupAgo, lastBackupAt, markBackup } from '../lib/safety'
 import { getLocation } from '../lib/media'
 import { setSettings, useSettings } from '../lib/settings'
 import { downloadBlob } from '../lib/util'
@@ -41,6 +42,7 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [persisted, setPersisted] = useState<boolean | null>(null)
+  const [backupAt, setBackupAt] = useState(lastBackupAt())
   const [usage, setUsage] = useState<{ usage?: number; quota?: number }>({})
 
   const refreshStorage = () => {
@@ -104,11 +106,20 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
         <div className="set-item">
           <div>
             <p className="item-title">Sao lưu và khôi phục</p>
-            <p className="item-desc">File JSON gồm cả ảnh và ghi âm. Khôi phục sẽ gộp, bản nào sửa sau thì giữ bản đó.</p>
+            <p className="item-desc">
+              File JSON gồm cả ảnh và ghi âm. Khôi phục sẽ gộp, bản nào sửa sau thì giữ bản đó. Sao lưu gần nhất: {backupAgo(backupAt)}.
+            </p>
           </div>
         </div>
         <div className="row-actions">
-          <button className="btn" onClick={async () => downloadBlob(await exportJson(), `ideos-backup-${stamp()}.json`)}>
+          <button
+            className="btn"
+            onClick={async () => {
+              downloadBlob(await exportJson(), `ideos-backup-${stamp()}.json`)
+              markBackup()
+              setBackupAt(Date.now())
+            }}
+          >
             Tải bản sao lưu
           </button>
           <button className="btn" onClick={() => fileRef.current?.click()}>
