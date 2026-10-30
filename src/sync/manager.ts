@@ -118,6 +118,8 @@ async function runSync() {
       /* bỏ qua */
     }
     set({ status: 'idle', lastSyncAt: now })
+    // số vòng đồng bộ đã xong, để kiểm thử tự động chờ đúng một vòng thay vì đoán theo chữ trên màn hình
+    document.documentElement.dataset.syncs = String(Number(document.documentElement.dataset.syncs ?? 0) + 1)
   } catch (e) {
     failures++
     set({ status: navigator.onLine ? 'error' : 'offline', error: errorText(e) })

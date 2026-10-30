@@ -75,8 +75,13 @@ npm install
 npm run dev        # giao diện, tự nạp lại khi sửa code
 npm run dev:api    # (cửa sổ thứ hai) máy chủ đồng bộ + D1 chạy local ở cổng 8787; `npm run dev` tự chuyển /api sang đây
 npm run preview:cf # chạy gần như bản deploy: build rồi phục vụ app + API bằng wrangler (http://localhost:8787)
-npm test           # test logic đồng bộ và mã hoá
+npm test           # test đơn vị: logic đồng bộ, gộp, mã hoá, công thức tiền, AI
+npm run e2e        # trình duyệt thật (Playwright) trên bản build + Worker cục bộ, AI giả; cần `npx playwright install chromium` lần đầu
 ```
+
+`npm run e2e` tự build, dựng D1 trống và chạy `wrangler dev` ở cổng 8787, rồi chạy các luồng trong `e2e/`: ghi và dùng offline,
+đồng bộ hai máy (kể cả sửa lệch nhau, xoá), bài toán tiền (gõ số kiểu Việt, kết luận), điện thoại (mục thu gọn, vùng chạm 44 px),
+nhắc sao lưu, AI hỏi tiếp và phản biện. CI chạy cả hai lệnh trên mỗi PR; deploy chỉ chạy khi cả hai qua.
 
 Sinh lại icon PNG từ `public/icon.svg`: `node scripts/icons.mjs` (cần Playwright).
 
@@ -131,9 +136,13 @@ Cách hoạt động: mỗi bản ghi trên máy có cờ `dirty`; một vòng �
 rồi kéo các hàng có `seq` lớn hơn con trỏ lần trước. Máy chủ cấp `seq` theo đúng thứ tự commit (dành chỗ và ghi trong cùng
 một transaction D1), nên không bao giờ bỏ sót dòng; nó cũng bỏ qua bản ghi cũ hơn bản đang có, nên thứ tự đồng bộ giữa các máy
 không ảnh hưởng kết quả. Từ mã đồng bộ, máy suy ra định danh kho, token truy cập và khoá mã hoá; máy chủ chỉ lưu hash của token.
-Khi hai máy cùng sửa một ý tưởng lúc chưa đồng bộ, engine kéo về trước rồi mới đẩy lên: trường đơn lẻ theo bản mới hơn,
-còn nhật ký, giả định, bằng chứng, việc thì gộp theo id, nên một dòng ghi thêm trên điện thoại không mất vì laptop vừa sửa tiêu đề.
-Logic ở `src/sync/engine.ts` và `src/sync/crypto.ts`, có test (`npm test`); máy chủ ở `worker/index.ts`, schema ở `migrations/`.
+Khi hai máy cùng sửa một ý tưởng lúc chưa đồng bộ, engine kéo về trước rồi mới đẩy lên và **gộp ba chiều theo từng trường**:
+máy giữ bản ý tưởng đã đồng bộ lần trước (bảng `bases`) làm gốc. Trường nào chỉ một bên đổi so với gốc thì lấy bên đó, cả hai
+cùng đổi một trường thì bản mới hơn thắng. Nhật ký, giả định, bằng chứng, việc gộp từng mục theo id (xoá một mục mà bên kia chưa
+động tới thì mất, đã sửa thì giữ); tag và liên kết gộp theo tập. Nên đổi tên trên laptop và ghi nhật ký trên điện thoại không đè mất
+nhau, dù bản của máy nào "mới hơn" cả ý tưởng. Chưa có bản gốc (dữ liệu cũ, máy mới ghép) thì dùng cách gộp cũ: danh sách theo id,
+trường đơn lẻ theo bản mới hơn.
+Logic ở `src/sync/merge.ts`, `src/sync/engine.ts` và `src/sync/crypto.ts`, có test (`npm test`); máy chủ ở `worker/index.ts`, schema ở `migrations/`.
 
 ## Kỹ thuật
 

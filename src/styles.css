@@ -3403,6 +3403,22 @@ details[open] > summary.block-head {
   .suggest-list .text-btn {
     min-height: 44px;
   }
+  .toast-action {
+    height: 44px;
+  }
+  /* gợi ý việc: mỗi nút một hàng đủ cao thay vì nới vùng bấm đè lên nhau */
+  .suggest {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 16px;
+  }
+  .suggest .text-btn {
+    min-height: 44px;
+  }
+  .suggest .text-btn::after {
+    content: none;
+  }
 }
 
 /* điện thoại: mục đóng xếp sát nhau thành một danh sách gọn */
@@ -3418,4 +3434,8 @@ details[open] > summary.block-head {
   .fold + .fold:not([open]) {
     border-top-color: var(--rule);
   }
+}
+
+.route-loading {
+  min-height: 160px;
 }

@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowLeft, Copy, MapPin, Pin, Share2, Trash2, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { db, deleteIdea, linkIdeas, newIdea, removeAttachment, restoreIdea, updateIdea } from '../db'
 import { ideaToMarkdown } from '../lib/backup'
 import { summarize } from '../lib/money/plan'
@@ -13,9 +13,10 @@ import { AttachmentList } from './Attachments'
 import { Assumptions, EvidenceList } from './Assumptions'
 import { Fold, JumpNav } from './Fold'
 import { Journal } from './Journal'
-import { MoneyPanel } from './MoneyPanel'
 import { EditableText } from './Editable'
 import { useToast } from './Toast'
+
+const MoneyPanel = lazy(() => import('./MoneyPanel').then((m) => ({ default: m.MoneyPanel })))
 
 /** Một dòng tóm tắt cho tiêu đề mục tiền khi mục đang đóng. */
 function moneyMeta(m: NonNullable<Idea['money']>) {
@@ -195,7 +196,9 @@ export function IdeaDetail({ id }: { id: string }) {
           </Fold>
 
           <Fold ideaId={id} id="money" headingId="money-h" title="Bài toán tiền" meta={idea.money && <span className="muted num">{moneyMeta(idea.money)}</span>}>
-            <MoneyPanel idea={idea} />
+            <Suspense fallback={<div className="route-loading" role="status" aria-label="Đang tải" />}>
+              <MoneyPanel idea={idea} />
+            </Suspense>
           </Fold>
 
           <Fold ideaId={id} id="evidence" headingId="ev-h" title="Bằng chứng" meta={idea.evidence.length > 0 && <span className="muted num">{idea.evidence.length}</span>}>

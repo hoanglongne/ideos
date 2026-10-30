@@ -1,16 +1,13 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { BarChart3, Lightbulb, Plus, RotateCcw, Settings as SettingsIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { BackupNudge } from './components/BackupNudge'
 import { CaptureSheet } from './components/CaptureSheet'
-import { Coach } from './components/Coach'
 import { IdeaDetail } from './components/IdeaDetail'
 import { IdeaList } from './components/IdeaList'
 import { Mark } from './components/Mark'
-import { Review } from './components/Review'
-import { Settings, type InstallPromptEvent } from './components/Settings'
-import { Stats } from './components/Stats'
+import type { InstallPromptEvent } from './components/Settings'
 import { SyncStatus, takePairLink } from './components/SyncPanel'
 import { db } from './db'
 import { go, useRoute, type Route } from './lib/router'
@@ -27,6 +24,12 @@ function takeLaunchParams(): { open: boolean; text?: string } {
   if (location.search) history.replaceState(null, '', location.pathname + location.hash)
   return { open, text: shared.length ? [...new Set(shared)].join('\n') : undefined }
 }
+
+// Các màn ít dùng tải khi cần: lần mở đầu nhẹ hơn. Service worker đã lưu sẵn chúng nên offline vẫn mở được.
+const Coach = lazy(() => import('./components/Coach').then((m) => ({ default: m.Coach })))
+const Review = lazy(() => import('./components/Review').then((m) => ({ default: m.Review })))
+const Stats = lazy(() => import('./components/Stats').then((m) => ({ default: m.Stats })))
+const Settings = lazy(() => import('./components/Settings').then((m) => ({ default: m.Settings })))
 
 const LAUNCH = takeLaunchParams()
 // mở bằng link ghép máy → vào thẳng Cài đặt với mã đã điền sẵn
@@ -149,12 +152,14 @@ export default function App() {
           </div>
         )}
         {!IS_DEMO && <BackupNudge />}
+        <Suspense fallback={<div className="route-loading" role="status" aria-label="Đang tải" />}>
         {route.name === 'list' && <IdeaList query={query} onQuery={setQuery} searchRef={searchRef} onNew={openCapture} dueCount={dueCount ?? 0} />}
         {route.name === 'idea' && <IdeaDetail key={route.id} id={route.id} />}
         {route.name === 'coach' && <Coach id={route.id} />}
         {route.name === 'review' && <Review />}
         {route.name === 'stats' && <Stats />}
         {route.name === 'settings' && <Settings installEvent={installEvent} onInstalled={() => setInstallEvent(null)} />}
+        </Suspense>
       </main>
 
       <nav className="tabbar" aria-label="Điều hướng">
