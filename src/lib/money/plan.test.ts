@@ -138,3 +138,46 @@ describe('verdict', () => {
     expect(v.text).toMatch(/Hoà vốn vào tháng \d+/)
   })
 })
+
+describe('verdict khi còn số ước lượng', () => {
+  const clean = { ...saas(), horizon: 36, cac: 100_000, marketing_budget: 2_000_000 }
+  const main = ['price', 'churn_pct', 'cac', 'fixed_cost'] as const
+  it('toàn số ước lượng: không bao giờ xanh, nói rõ chưa phải số của bạn', () => {
+    const v = verdict(clean, summarize(clean), [...main])
+    expect(v.tone).toBe('neutral')
+    expect(v.text).toMatch(/Mới dùng số trung bình/)
+    expect(v.estimates).toHaveLength(4)
+  })
+  it('một phần ước lượng: vẫn không xanh, nêu số nào còn ước lượng', () => {
+    const v = verdict(clean, summarize(clean), ['cac'])
+    expect(v.tone).toBe('neutral')
+    expect(v.text).toMatch(/chi phí kéo khách/)
+  })
+  it('đã tự nhập hết thì xanh như cũ', () => {
+    expect(verdict(clean, summarize(clean), []).tone).toBe('positive')
+  })
+  it('tin xấu vẫn xấu dù còn ước lượng', () => {
+    const bad = { ...saas(), var_cost_pct: 120 }
+    expect(verdict(bad, summarize(bad), ['price']).tone).toBe('negative')
+  })
+})
+
+describe('chi phí kéo khách bằng 0', () => {
+  it('không có nguồn khách nào thì nói thẳng, không kết luận "chưa hoà vốn"', () => {
+    const i = { ...saas(), cac: 0 }
+    const v = verdict(i, summarize(i))
+    expect(v.tone).toBe('neutral')
+    expect(v.text).toMatch(/Chưa có nguồn khách/)
+  })
+  it('có khách tự đến thì tính bình thường, kênh miễn phí vẫn hoà vốn được', () => {
+    const i = { ...saas(), cac: 0, marketing_budget: 0, organic_new: 20, horizon: 24 }
+    const s = summarize(i)
+    expect(s.breakEvenMonth).not.toBeNull()
+    expect(verdict(i, s).text).toMatch(/Hoà vốn vào tháng/)
+    expect(s.ltvCac.reason).toMatch(/bằng 0/)
+  })
+  it('khách tự đến là một con số để kiểm chứng', () => {
+    const i = { ...saas(), cac: 0, marketing_budget: 0, organic_new: 20, horizon: 24 }
+    expect(sensitivities(i).some((r) => r.key === 'organic_new')).toBe(true)
+  })
+})

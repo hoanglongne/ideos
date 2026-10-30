@@ -3174,3 +3174,11 @@ details[open] > summary.block-head {
 .money-handoff .money-adv {
   justify-self: stretch;
 }
+
+.money-field.invalid input {
+  border-color: var(--negative);
+}
+.money-err {
+  color: var(--negative);
+  font-style: normal;
+}

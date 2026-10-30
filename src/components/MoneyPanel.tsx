@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { addJournal, patchIdea, updateIdea } from '../db'
 import { observerFileName, toObserverFile } from '../lib/money/export'
 import { money, moneyShort, num } from '../lib/money/format'
+import { checkInput } from '../lib/money/input'
 import { fieldsFor, MODEL_IDS, MODELS, newMoneyPlan, switchModel, type Currency, type GoalType, type InputKey, type MoneyPlan, type PlanInputs } from '../lib/money/models'
 import { simulate, summarize, type PlanRow } from '../lib/money/plan'
 import { sensitivities, verdict, WORSEN, type Sensitivity } from '../lib/money/sensitivity'
@@ -70,33 +71,73 @@ function labelOf(key: InputKey, i: PlanInputs): string {
   }
 }
 
-/** Ô nhập một con số. Số còn là mặc định của mô hình thì viền nét đứt và ghi rõ là ước lượng. */
+const vnd = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 })
+const usd = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 })
+
+/** Chữ hiện khi đang gõ vào ô: số trần, không dấu nghìn */
+const raw = (v: number) => String(v).replace('.', ',')
+
+/** Chữ hiện trong ô khi không gõ: tiền có dấu nghìn, số khác không (để sửa tiếp không bị đọc sai dấu chấm). */
+const display = (v: number, unit: Unit, cur: Currency) => (unit === 'money' ? (cur === 'VND' ? vnd.format(Math.round(v)) : usd.format(v)) : raw(v))
+/**
+ * Ô nhập một con số. Số còn là mặc định của mô hình thì viền nét đứt và ghi rõ là ước lượng.
+ * Ô không do React điều khiển: bấm vào thì đổi ngay sang số trần (không dấu nghìn) và chọn hết,
+ * rời ra thì hiện lại có dấu nghìn. Làm đồng bộ trong sự kiện để gõ nhanh cũng không bị nối chữ.
+ */
 function NumField({ k, plan, onChange }: { k: InputKey; plan: MoneyPlan; onChange: (k: InputKey, v: number) => void }) {
   const i = plan.inputs
   const unit = FIELD_UNIT[k] ?? 'count'
+  const isMoney = unit === 'money'
   const value = i[k] as number
+  const ref = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState<string | null>(null)
   const assumed = plan.assumed.includes(k)
   const id = 'mf-' + k
+  const check = draft != null && draft.trim() !== '' ? checkInput(k, draft, isMoney) : null
+  const bad = check && !check.ok ? check.message : null
+
+  // số đổi từ bên ngoài (đổi mô hình, hoàn tác, máy khác đồng bộ về) thì cập nhật chữ trong ô, trừ khi đang gõ
+  useEffect(() => {
+    const el = ref.current
+    if (el && document.activeElement !== el) el.value = display(value, unit, i.currency)
+  }, [value, unit, i.currency])
+
   return (
-    <div className={'money-field' + (assumed ? ' assumed' : '')}>
+    <div className={'money-field' + (assumed ? ' assumed' : '') + (bad ? ' invalid' : '')}>
       <label htmlFor={id}>{labelOf(k, i)}</label>
       <input
         id={id}
+        ref={ref}
         className="num"
         inputMode="decimal"
-        value={draft ?? String(value)}
-        onChange={(e) => {
-          const raw = e.target.value.replace(',', '.')
-          setDraft(e.target.value)
-          const n = Number(raw)
-          if (raw.trim() !== '' && Number.isFinite(n) && n >= 0) onChange(k, n)
+        autoComplete="off"
+        aria-invalid={bad ? true : undefined}
+        aria-describedby={id + '-hint'}
+        defaultValue={display(value, unit, i.currency)}
+        onFocus={(e) => {
+          e.target.value = raw(value)
+          e.target.select()
         }}
-        onBlur={() => setDraft(null)}
+        onChange={(e) => {
+          setDraft(e.target.value)
+          if (e.target.value.trim() === '') return
+          const c = checkInput(k, e.target.value, isMoney)
+          if (c.ok) onChange(k, c.value)
+        }}
+        onBlur={(e) => {
+          setDraft(null)
+          e.target.value = display(value, unit, i.currency)
+        }}
       />
-      <span className="money-hint num">
-        {unit === 'money' ? `= ${money(value, i.currency)}` : ''}
-        {assumed && <span className="money-est">{unit === 'money' ? ' · ' : ''}ước lượng, chưa phải số của bạn</span>}
+      <span id={id + '-hint'} className="money-hint num" role={bad ? 'alert' : undefined}>
+        {bad ? (
+          <span className="money-err">{bad}</span>
+        ) : (
+          <>
+            {isMoney && check?.ok ? `= ${money(check.value, i.currency)}` : ''}
+            {assumed && <span className="money-est">{isMoney && check?.ok ? ' · ' : ''}ước lượng, chưa phải số của bạn</span>}
+          </>
+        )}
       </span>
     </div>
   )
@@ -156,7 +197,7 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
     if (!plan) return null
     const rows = simulate(plan.inputs)
     const s = summarize(plan.inputs, rows)
-    return { rows, s, v: verdict(plan.inputs, s), sens: sensitivities(plan.inputs, plan.assumed) }
+    return { rows, s, v: verdict(plan.inputs, s, plan.assumed), sens: sensitivities(plan.inputs, plan.assumed) }
   }, [plan])
 
   const save = (money: MoneyPlan | undefined) => updateIdea(idea.id, { money })
@@ -304,7 +345,7 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
       <details className="money-adv">
         <summary>Chi tiết thêm</summary>
         <div className="money-fields">
-          {(['fee_pct', 'tax_pct', 'organic_new', 'start_customers', 'horizon'] as const).map((k) => (
+          {(['fee_pct', 'tax_pct', 'start_customers', 'horizon'] as const).map((k) => (
             <NumField key={k} k={k} plan={plan} onChange={edit} />
           ))}
         </div>
@@ -316,7 +357,7 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
       ) : (
         <>
           <p className="money-note">
-            App thử làm xấu từng con số đi {Math.round(WORSEN * 100)}% (giá thấp hơn, khách rời đi nhiều hơn…) rồi xem tiền cuối kỳ tụt bao nhiêu. Con số tụt nhiều nhất là điều bạn nên kiểm chứng trước.
+            App thử làm xấu từng con số đi {Math.round(WORSEN * 100)}% (giá thấp hơn, khách rời đi nhiều hơn…) rồi xem tiền cuối kỳ tụt bao nhiêu. Con số tụt nhiều nhất là điều bạn nên kiểm chứng trước. Mỗi lần chỉ đổi một con số và bỏ qua mối liên quan giữa chúng (tăng giá thường làm giảm khách), nên đây là gợi ý chọn việc cần thử, không phải dự báo.
           </p>
           <ol className="sens">
             {top.map((r) => (

@@ -80,7 +80,7 @@ export function ideaToMarkdown(idea: Idea): string {
   }
   if (idea.money) {
     const i = idea.money.inputs
-    out.push('', `**Bài toán tiền** (${MODELS[i.model].name}): ${verdict(i, summarize(i)).text}`)
+    out.push('', `**Bài toán tiền** (${MODELS[i.model].name}): ${verdict(i, summarize(i), idea.money.assumed).text}`)
     out.push(`- ${MODELS[i.model].priceLabel}: ${money(i.price, i.currency)} · chi phí kéo một khách: ${money(i.cac, i.currency)} · chi phí cố định: ${money(i.fixed_cost, i.currency)}/tháng`)
   }
   if (idea.assumptions.length) {

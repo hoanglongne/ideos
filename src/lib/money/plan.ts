@@ -113,7 +113,7 @@ export function summarize(i: PlanInputs, rows: PlanRow[] = simulate(i)): PlanSum
   const u = unitModel(i)
   const { goalProfit } = goalParts(i)
   const ltv: Metric = u.churn > 0 ? ok(u.contribution / u.churn) : na('Không có khách rời đi nên giá trị một khách không giới hạn. Hãy đặt tỉ lệ rời đi hoặc mua lại.')
-  const ltvCac: Metric = ltv.value == null ? na(ltv.reason!) : i.cac <= 0 ? na('Chưa có chi phí kéo khách') : ok(ltv.value / i.cac)
+  const ltvCac: Metric = ltv.value == null ? na(ltv.reason!) : i.cac <= 0 ? na('Chi phí kéo khách bằng 0 nên không có tỉ lệ này.') : ok(ltv.value / i.cac)
   const payback: Metric = u.contribution <= 0 ? na('Mỗi khách không có lãi nên không hoàn vốn') : ok(i.cac / u.contribution)
   let minCash = i.start_cash
   for (const r of rows) minCash = Math.min(minCash, r.cash)
