@@ -162,3 +162,27 @@ export function sessionLength(idea: Idea): number {
   const open = QUESTIONS.filter((q) => q.stages.includes(idea.status) && !q.answered(idea)).length
   return Math.min(SESSION_SIZE, open) + 1
 }
+
+/** Câu hỏi tiếp do AI đặt sau một câu trả lời còn chung chung. Không nằm trong ngân sách 5 câu của phiên. */
+export const FOLLOWUP_PREFIX = 'fu-'
+export const MAX_FOLLOWUPS = 2
+
+export const isFollowup = (q: Pick<Question, 'id'>) => q.id.startsWith(FOLLOWUP_PREFIX)
+
+export function followupQuestion(n: number, prompt: string): Question {
+  return {
+    id: FOLLOWUP_PREFIX + n,
+    prompt,
+    hint: 'Câu hỏi tiếp từ AI, dựa trên điều bạn vừa trả lời. Bỏ qua cũng được.',
+    stages: ['spark', 'exploring', 'validating', 'building', 'parked', 'shipped'],
+    target: { type: 'journal', label: 'Hỏi tiếp' },
+    answered: () => false,
+  }
+}
+
+/** Chỉ hỏi tiếp sau câu trả lời bằng chữ (canvas, nhật ký), đủ dài để có gì mà đào, và chưa quá số lần. */
+export function shouldFollowUp(q: Question, summary: string | null, used: number, aiReady: boolean): boolean {
+  if (!aiReady || !summary || isFollowup(q) || used >= MAX_FOLLOWUPS) return false
+  if (q.target.type !== 'canvas' && q.target.type !== 'journal') return false
+  return summary.trim().length >= 12
+}

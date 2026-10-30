@@ -47,6 +47,13 @@ Dựa trên ý tưởng bên dưới, trả về đúng một object JSON với 
 - "questions": 2 đến 3 câu nên đi hỏi người dùng thật ngay trong tuần này
 Viết tiếng Việt, cụ thể theo ý tưởng này, không chung chung, không khen. Chỉ trả về JSON.`
 
+export const FOLLOWUP_PROMPT = `Bạn là huấn luyện viên giúp một người mài ý tưởng sản phẩm của họ. Họ vừa trả lời một câu hỏi.
+Đọc câu trả lời rồi quyết định:
+- Nếu câu trả lời đã cụ thể (có người thật, chuyện thật, con số hoặc ví dụ), trả {"question": ""}.
+- Nếu còn chung chung, né tránh, tự nhận định mà chưa có bằng chứng, hoặc mâu thuẫn với phần khác của ý tưởng, đặt đúng MỘT câu hỏi tiếp để đào sâu vào chính điều họ vừa nói.
+Câu hỏi tiếp: tiếng Việt, dưới 30 từ, cụ thể theo câu trả lời này, không khen, không giải thích, không hỏi lại điều đã hỏi.
+Chỉ trả về JSON dạng {"question": "..."}.`
+
 const clip = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().replace(/\s+\n/g, '\n').slice(0, max) : '')
 
 /** Lấy object JSON đầu tiên trong câu trả lời của model (model hay bọc trong ```json hoặc thêm lời dẫn). */
@@ -119,6 +126,17 @@ export function briefText(b: IdeaBrief): string {
   return lines.join('\n').slice(0, 6000)
 }
 
+/** Câu hỏi tiếp của model: một dòng, gọn; rỗng nghĩa là câu trả lời đã đủ cụ thể. */
+export function normFollowup(o: Record<string, unknown>): string | null {
+  const first = clip(o.question, 400).split('\n')[0].trim().replace(/^["“”'`]+|["“”'`]+$/g, '').trim()
+  return first.length >= 8 ? first.slice(0, 240) : null
+}
+
+/** Ý tưởng cùng câu hỏi và câu trả lời vừa rồi, cho model đọc. */
+export function followupText(b: IdeaBrief, question: string, answer: string): string {
+  return `${briefText(b)}\n\nCâu hỏi vừa hỏi: ${clip(question, 300)}\nCâu trả lời của người dùng: ${clip(answer, 1500)}`.slice(0, 7000)
+}
+
 /* ---------- AI giả, chỉ dùng khi chạy trên máy (AI_FAKE=1) ---------- */
 
 export function fakeStructure(text: string): Structured {
@@ -135,4 +153,8 @@ export function fakeCritique(b: IdeaBrief): Critique {
     ],
     questions: ['(AI giả) Lần gần nhất bạn gặp vấn đề này là khi nào?', '(AI giả) Bạn đang giải quyết nó bằng cách nào?'],
   }
+}
+
+export function fakeFollowup(answer: string): string | null {
+  return answer.trim().length < 60 ? '(AI giả) Cho một ví dụ cụ thể: lần gần nhất chuyện đó xảy ra là khi nào, với ai?' : null
 }

@@ -29,3 +29,30 @@ describe('xử lý câu trả lời của AI', () => {
     expect(t.length).toBeLessThanOrEqual(6000)
   })
 })
+
+import { fakeFollowup, followupText, normFollowup } from './ai-text'
+
+describe('câu hỏi tiếp của AI', () => {
+  it('lấy một dòng, bỏ dấu ngoặc bọc ngoài', () => {
+    expect(normFollowup({ question: '"Lần gần nhất chuyện đó xảy ra là khi nào?"\nGiải thích thêm' })).toBe('Lần gần nhất chuyện đó xảy ra là khi nào?')
+  })
+  it('rỗng, quá ngắn hoặc sai kiểu nghĩa là câu trả lời đã đủ cụ thể', () => {
+    expect(normFollowup({ question: '' })).toBeNull()
+    expect(normFollowup({ question: 'Ừ' })).toBeNull()
+    expect(normFollowup({ question: 42 })).toBeNull()
+    expect(normFollowup({})).toBeNull()
+  })
+  it('cắt câu quá dài', () => {
+    expect(normFollowup({ question: 'a'.repeat(900) })!.length).toBe(240)
+  })
+  it('đưa cả câu hỏi và câu trả lời cho model, có giới hạn độ dài', () => {
+    const t = followupText({ title: 'App chạy bộ', body: '', canvas: {}, assumptions: [], evidence: [], journal: [] }, 'Ai đau nhất?', 'Dân văn phòng')
+    expect(t).toMatch(/Câu hỏi vừa hỏi: Ai đau nhất\?/)
+    expect(t).toMatch(/Câu trả lời của người dùng: Dân văn phòng/)
+    expect(followupText({ title: 'x', body: '', canvas: {}, assumptions: [], evidence: [], journal: [] }, 'q', 'a'.repeat(9000)).length).toBeLessThanOrEqual(7000)
+  })
+  it('AI giả chỉ hỏi tiếp khi câu trả lời ngắn', () => {
+    expect(fakeFollowup('Dân văn phòng')).not.toBeNull()
+    expect(fakeFollowup('x'.repeat(80))).toBeNull()
+  })
+})

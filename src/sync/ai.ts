@@ -58,7 +58,12 @@ export async function structure(text: string): Promise<Structured> {
 
 export async function critique(idea: Idea): Promise<Critique> {
   const k = keysOrThrow()
-  const brief = {
+  const brief = briefOf(idea)
+  return (await (await call(`/vaults/${k.vault}/ai/critique`, { method: 'POST', token: k.token, body: JSON.stringify({ idea: brief }) })).json()) as Critique
+}
+
+function briefOf(idea: Idea) {
+  return {
     title: idea.title,
     body: idea.body,
     canvas: Object.fromEntries(CANVAS_FIELDS.map((f) => [f.label, idea.canvas[f.key]])),
@@ -66,7 +71,13 @@ export async function critique(idea: Idea): Promise<Critique> {
     evidence: idea.evidence.map((e) => ({ text: e.text, signal: e.signal === 'for' ? 'ủng hộ' : e.signal === 'against' ? 'phản bác' : 'chưa rõ' })),
     journal: idea.journal.filter((j) => j.kind === 'note' || j.kind === 'coach').map((j) => j.text),
   }
-  return (await (await call(`/vaults/${k.vault}/ai/critique`, { method: 'POST', token: k.token, body: JSON.stringify({ idea: brief }) })).json()) as Critique
+}
+
+/** Câu hỏi tiếp theo câu trả lời vừa rồi, hoặc null khi câu trả lời đã đủ cụ thể. */
+export async function followup(idea: Idea, question: string, answer: string): Promise<string | null> {
+  const k = keysOrThrow()
+  const res = await call(`/vaults/${k.vault}/ai/followup`, { method: 'POST', token: k.token, body: JSON.stringify({ idea: briefOf(idea), question, answer }) })
+  return ((await res.json()) as { question: string | null }).question
 }
 
 export type AiAvailability = { state: 'loading' } | { state: 'unpaired' } | { state: 'off' } | { state: 'error'; message: string } | { state: 'ready'; status: AiStatus }

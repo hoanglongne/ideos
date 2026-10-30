@@ -2,10 +2,11 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowLeft } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { db, updateIdea } from '../db'
-import { NEXT_STEP, nextQuestion, sessionLength, type Question } from '../lib/coach'
+import { followupQuestion, isFollowup, NEXT_STEP, nextQuestion, sessionLength, shouldFollowUp, type Question } from '../lib/coach'
 import { go } from '../lib/router'
 import { iceScore, uid } from '../lib/util'
 import { CANVAS_FIELDS, SIGNALS, type Assumption, type Evidence, type Idea, type Scores } from '../types'
+import { followup, useAi } from '../sync/ai'
 import { MediaTools } from './MediaTools'
 
 interface Done {
@@ -26,6 +27,12 @@ export function Coach({ id }: { id: string }) {
   const [total, setTotal] = useState<number | null>(null)
   const [finished, setFinished] = useState(false)
   const logged = useRef(false)
+  const { avail, refresh } = useAi()
+  const aiReady = avail.state === 'ready' && avail.status.used < avail.status.limit
+  // AI đang đọc câu trả lời để đặt câu hỏi tiếp; bấm bỏ qua thì bỏ cuộc chờ
+  const [thinking, setThinking] = useState(false)
+  const followups = useRef(0)
+  const cancelWait = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (idea && total === null) setTotal(sessionLength(idea))
@@ -56,7 +63,7 @@ export function Coach({ id }: { id: string }) {
   const advance = async (summary: string | null) => {
     if (!q) return
     const nextAsked = [...asked, q.id]
-    const nextDone = summary ? [...done, { q, summary }] : done
+    const nextDone = summary ? [...done, { q, summary: isFollowup(q) ? `${q.prompt} — ${summary}` : summary }] : done
     setAsked(nextAsked)
     setDone(nextDone)
     if (q.id === NEXT_STEP.id) {
@@ -66,10 +73,27 @@ export function Coach({ id }: { id: string }) {
       return
     }
     const fresh = await db.ideas.get(id)
+    if (fresh && summary && shouldFollowUp(q, summary, followups.current, aiReady)) {
+      setThinking(true)
+      const next = await Promise.race<string | null>([
+        followup(fresh, q.prompt, summary).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 9000)),
+        new Promise<null>((resolve) => (cancelWait.current = () => resolve(null))),
+      ])
+      cancelWait.current = null
+      setThinking(false)
+      refresh()
+      if (next) {
+        followups.current += 1
+        setCurrent(followupQuestion(followups.current, next))
+        return
+      }
+    }
     setCurrent(fresh ? nextQuestion(fresh, nextAsked) : null)
   }
 
-  const step = asked.length + 1
+  // câu hỏi tiếp của AI không tính vào "Câu X trên N"
+  const step = asked.filter((x) => !isFollowup({ id: x })).length + 1
 
   return (
     <div className="coach">
@@ -89,7 +113,18 @@ export function Coach({ id }: { id: string }) {
       <h1 className="coach-idea">{idea.title}</h1>
 
       <div className="coach-grid">
-      {q ? (
+      {thinking ? (
+        <section className="coach-q" aria-live="polite">
+          <p className="coach-prompt coach-thinking">AI đang đọc câu trả lời của bạn…</p>
+          <p className="coach-hint">Nếu còn chung chung, AI sẽ hỏi thêm một câu để đào sâu. Không muốn chờ thì cứ bỏ qua.</p>
+          <div className="coach-actions">
+            <span className="push" />
+            <button type="button" className="text-btn" onClick={() => cancelWait.current?.()}>
+              Bỏ qua
+            </button>
+          </div>
+        </section>
+      ) : q ? (
         <QuestionStep key={q.id} q={q} idea={idea} onDone={advance} />
       ) : (
         current !== undefined && (
@@ -103,6 +138,7 @@ export function Coach({ id }: { id: string }) {
               setCurrent(undefined)
               setFinished(false)
               logged.current = false
+              followups.current = 0
             }}
           />
         )

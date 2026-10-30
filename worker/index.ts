@@ -7,7 +7,7 @@
  */
 
 import { attachmentsDelta, capBytes, exceeds, fullMessage, ideasDelta, type OldIdea } from './quota'
-import { briefText, CRITIQUE_PROMPT, extractJson, fakeCritique, fakeStructure, normCritique, normStructure, STRUCTURE_PROMPT, type IdeaBrief } from './ai-text'
+import { briefText, CRITIQUE_PROMPT, extractJson, fakeCritique, fakeFollowup, fakeStructure, FOLLOWUP_PROMPT, followupText, normCritique, normFollowup, normStructure, STRUCTURE_PROMPT, type IdeaBrief } from './ai-text'
 
 interface Env {
   DB: D1Database
@@ -369,6 +369,13 @@ async function aiCritique(env: Env, vault: string, req: Request) {
   return json(result)
 }
 
+async function aiFollowup(env: Env, vault: string, req: Request) {
+  const { idea, question, answer } = await readJson<{ idea?: IdeaBrief; question?: unknown; answer?: unknown }>(req)
+  if (!idea || typeof idea.title !== 'string' || typeof question !== 'string' || typeof answer !== 'string' || !answer.trim()) throw new HttpError(400, 'Thiếu ý tưởng, câu hỏi hoặc câu trả lời')
+  const q = await withQuota(env, vault, async () => (env.AI_FAKE === '1' ? fakeFollowup(answer) : normFollowup(await runJson(env, FOLLOWUP_PROMPT, followupText(idea, question, answer)))))
+  return json({ question: q })
+}
+
 async function api(req: Request, env: Env, url: URL): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   const parts = url.pathname.split('/').filter(Boolean) // api, v1, ...
@@ -392,6 +399,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   if (rest === 'ai/transcribe' && m === 'POST') return aiTranscribe(env, vault, req)
   if (rest === 'ai/structure' && m === 'POST') return aiStructure(env, vault, req)
   if (rest === 'ai/critique' && m === 'POST') return aiCritique(env, vault, req)
+  if (rest === 'ai/followup' && m === 'POST') return aiFollowup(env, vault, req)
   const blob = rest.match(/^blobs\/([\w-]{1,100})$/)
   if (blob && m === 'PUT') return putBlob(env, vault, blob[1], req, auth.bytes)
   if (blob && m === 'GET') return getBlob(env, vault, blob[1])
