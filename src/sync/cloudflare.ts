@@ -7,6 +7,8 @@ export class SyncHttpError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** Mã máy đọc được do máy chủ gửi kèm (vd. admin_key_required, vault_full) */
+    public code?: string,
   ) {
     super(message)
   }
@@ -35,12 +37,15 @@ export async function call(path: string, init: RequestInit & { token?: string } 
   })
   if (!res.ok) {
     let msg = `Máy chủ trả lỗi ${res.status}`
+    let code: string | undefined
     try {
-      msg = ((await res.json()) as { error?: string }).error ?? msg
+      const body = (await res.json()) as { error?: string; code?: string }
+      msg = body.error ?? msg
+      code = body.code
     } catch {
       /* không phải JSON */
     }
-    throw new SyncHttpError(res.status, msg)
+    throw new SyncHttpError(res.status, msg, code)
   }
   return res
 }
@@ -60,7 +65,7 @@ export async function checkServer(timeoutMs = 6000): Promise<boolean> {
   }
 }
 
-export const createVault = (k: VaultKeys) => call(`/vaults/${k.vault}`, { method: 'POST', token: k.token })
+export const createVault = (k: VaultKeys, adminKey?: string) => call(`/vaults/${k.vault}`, { method: 'POST', token: k.token, ...(adminKey ? { headers: { 'X-Admin-Key': adminKey } } : {}) })
 
 /** seq mới nhất của kho; dùng để biết máy khác vừa ghi gì chưa mà không phải kéo cả dữ liệu. */
 export async function vaultHead(k: VaultKeys): Promise<number> {

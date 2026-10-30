@@ -16,6 +16,7 @@
   ],
   "vars": {
     "MAX_VAULTS": "3",
+    "MAX_VAULT_MB": "300",
     "AI_DAILY_LIMIT": "30",
     "AI_FAKE": "1"
   }

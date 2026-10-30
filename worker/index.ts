@@ -6,12 +6,16 @@
  * Nội dung ý tưởng và đính kèm đã được mã hoá AES-GCM trên máy trước khi gửi.
  */
 
+import { attachmentsDelta, capBytes, exceeds, fullMessage, ideasDelta, type OldIdea } from './quota'
 import { briefText, CRITIQUE_PROMPT, extractJson, fakeCritique, fakeStructure, normCritique, normStructure, STRUCTURE_PROMPT, type IdeaBrief } from './ai-text'
 
 interface Env {
   DB: D1Database
   ASSETS: Fetcher
   MAX_VAULTS?: string
+  MAX_VAULT_MB?: string
+  /** Secret tuỳ chọn: có đặt thì tạo mã đồng bộ mới phải kèm khoá này */
+  ADMIN_KEY?: string
   AI?: Ai
   AI_FAKE?: string
   AI_DAILY_LIMIT?: string
@@ -28,7 +32,7 @@ const PULL_LIMIT = 500
 
 const CORS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Admin-Key',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Max-Age': '86400',
 }
@@ -37,6 +41,8 @@ class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** Mã máy đọc được, để app biết cần làm gì (vd. hỏi khoá quản trị) */
+    public code?: string,
   ) {
     super(message)
   }
@@ -60,13 +66,21 @@ function bearer(req: Request) {
   return t
 }
 
-/** Kiểm tra vault tồn tại và token đúng; trả về seq hiện tại. */
-async function authorize(env: Env, vault: string, req: Request): Promise<number> {
+/** Kiểm tra vault tồn tại và token đúng; trả về seq và dung lượng hiện tại. */
+async function authorize(env: Env, vault: string, req: Request): Promise<{ seq: number; bytes: number }> {
   const token = bearer(req)
-  const row = await env.DB.prepare('SELECT token_hash, seq FROM vaults WHERE id = ?').bind(vault).first<{ token_hash: string; seq: number }>()
+  const row = await env.DB.prepare('SELECT token_hash, seq, bytes FROM vaults WHERE id = ?').bind(vault).first<{ token_hash: string; seq: number; bytes: number }>()
   if (!row) throw new HttpError(404, 'Không có dữ liệu đồng bộ cho mã này')
   if (row.token_hash !== (await sha256Hex(token))) throw new HttpError(401, 'Mã đồng bộ không đúng')
-  return row.seq
+  return { seq: row.seq, bytes: row.bytes }
+}
+
+/** Câu lệnh cộng/trừ dung lượng của kho, chạy chung transaction với lần ghi. */
+const bytesStatement = (env: Env, vault: string, delta: number) => env.DB.prepare('UPDATE vaults SET bytes = MAX(0, bytes + ?) WHERE id = ?').bind(delta, vault)
+
+function checkCap(env: Env, used: number, delta: number) {
+  const cap = capBytes(env.MAX_VAULT_MB)
+  if (exceeds(used, delta, cap)) throw new HttpError(413, fullMessage(cap), 'vault_full')
 }
 
 async function readJson<T>(req: Request): Promise<T> {
@@ -117,13 +131,22 @@ function seqStatements(env: Env, vault: string, rows: unknown[][], sql: (values:
   return stmts
 }
 
-async function pushIdeas(env: Env, vault: string, req: Request) {
+async function pushIdeas(env: Env, vault: string, req: Request, used: number) {
   const rows = checkRows<IdeaIn>((await readJson<{ rows: unknown }>(req)).rows)
   for (const r of rows) {
     if (!Number.isSafeInteger(r.updatedAt)) throw new HttpError(400, 'updatedAt không hợp lệ')
     if (r.data !== null && (typeof r.data !== 'string' || r.data.length > MAX_DATA_CHARS)) throw new HttpError(400, 'Ý tưởng quá lớn')
   }
   if (!rows.length) return json({ ok: true })
+  const old = new Map<string, OldIdea>()
+  for (const g of chunk(rows.map((r) => r.id), 90)) {
+    const { results } = await env.DB.prepare(`SELECT id, LENGTH(data) AS n, updated_at FROM ideas WHERE vault = ? AND id IN (${g.map(() => '?').join(',')})`)
+      .bind(vault, ...g)
+      .all<{ id: string; n: number | null; updated_at: number }>()
+    for (const r of results) old.set(r.id, { n: r.n ?? 0, updatedAt: r.updated_at })
+  }
+  const delta = ideasDelta(rows, old)
+  checkCap(env, used, delta)
   // Bản mới hơn thắng: chỉ ghi đè khi updatedAt gửi lên >= bản đang có
   const stmts = seqStatements(
     env,
@@ -135,14 +158,23 @@ async function pushIdeas(env: Env, vault: string, req: Request) {
        WHERE excluded.updated_at >= ideas.updated_at`,
     5,
   )
-  await env.DB.batch(stmts)
+  await env.DB.batch([...stmts, bytesStatement(env, vault, delta)])
   return json({ ok: true })
 }
 
-async function pushAttachments(env: Env, vault: string, req: Request) {
+async function pushAttachments(env: Env, vault: string, req: Request, used: number) {
   const rows = checkRows<AttIn>((await readJson<{ rows: unknown }>(req)).rows)
   for (const r of rows) if (r.meta !== null && (typeof r.meta !== 'string' || r.meta.length > 10_000)) throw new HttpError(400, 'meta không hợp lệ')
   if (!rows.length) return json({ ok: true })
+  const old = new Map<string, number>()
+  for (const g of chunk(rows.map((r) => r.id), 90)) {
+    const { results } = await env.DB.prepare(`SELECT id, LENGTH(meta) AS n FROM attachments WHERE vault = ? AND id IN (${g.map(() => '?').join(',')})`)
+      .bind(vault, ...g)
+      .all<{ id: string; n: number | null }>()
+    for (const r of results) old.set(r.id, r.n ?? 0)
+  }
+  const delta = attachmentsDelta(rows, old)
+  checkCap(env, used, delta)
   const stmts = seqStatements(
     env,
     vault,
@@ -152,7 +184,7 @@ async function pushAttachments(env: Env, vault: string, req: Request) {
        ON CONFLICT (vault, id) DO UPDATE SET meta = excluded.meta, deleted = excluded.deleted, seq = excluded.seq`,
     4,
   )
-  await env.DB.batch(stmts)
+  await env.DB.batch([...stmts, bytesStatement(env, vault, delta)])
   return json({ ok: true })
 }
 
@@ -179,12 +211,16 @@ async function pullAttachments(env: Env, vault: string, url: URL) {
   return json({ rows: results.map((r) => ({ id: r.id, meta: r.meta, deleted: !!r.deleted, seq: r.seq })) })
 }
 
-async function putBlob(env: Env, vault: string, id: string, req: Request) {
+async function putBlob(env: Env, vault: string, id: string, req: Request, used: number) {
   const buf = new Uint8Array(await req.arrayBuffer())
   if (!buf.length || buf.length > MAX_BLOB) throw new HttpError(413, 'File quá lớn (tối đa 20 MB)')
+  const prev = await env.DB.prepare('SELECT COALESCE(SUM(LENGTH(data)), 0) AS n FROM blobs WHERE vault = ? AND id = ?').bind(vault, id).first<{ n: number }>()
+  const delta = buf.length - (prev?.n ?? 0)
+  checkCap(env, used, delta)
   const stmts = [env.DB.prepare('DELETE FROM blobs WHERE vault = ? AND id = ?').bind(vault, id)]
   for (let part = 0, off = 0; off < buf.length; part++, off += BLOB_PART)
     stmts.push(env.DB.prepare('INSERT INTO blobs (vault, id, part, data) VALUES (?, ?, ?, ?)').bind(vault, id, part, buf.slice(off, off + BLOB_PART)))
+  stmts.push(bytesStatement(env, vault, delta))
   await env.DB.batch(stmts)
   return json({ ok: true })
 }
@@ -205,7 +241,14 @@ async function getBlob(env: Env, vault: string, id: string) {
 async function deleteBlobs(env: Env, vault: string, req: Request) {
   const { ids } = await readJson<{ ids: unknown }>(req)
   if (!Array.isArray(ids) || ids.length > MAX_ROWS_PER_PUSH || !ids.every((x) => typeof x === 'string' && ID_RE.test(x))) throw new HttpError(400, 'ids không hợp lệ')
-  if (ids.length) await env.DB.batch(chunk(ids, 90).map((g) => env.DB.prepare(`DELETE FROM blobs WHERE vault = ? AND id IN (${g.map(() => '?').join(',')})`).bind(vault, ...g)))
+  if (ids.length) {
+    let freed = 0
+    for (const g of chunk(ids as string[], 90)) {
+      const r = await env.DB.prepare(`SELECT COALESCE(SUM(LENGTH(data)), 0) AS n FROM blobs WHERE vault = ? AND id IN (${g.map(() => '?').join(',')})`).bind(vault, ...g).first<{ n: number }>()
+      freed += r?.n ?? 0
+    }
+    await env.DB.batch([...chunk(ids as string[], 90).map((g) => env.DB.prepare(`DELETE FROM blobs WHERE vault = ? AND id IN (${g.map(() => '?').join(',')})`).bind(vault, ...g)), bytesStatement(env, vault, -freed)])
+  }
   return json({ ok: true })
 }
 
@@ -216,6 +259,10 @@ async function createVault(env: Env, vault: string, req: Request) {
   if (existing) {
     if (existing.token_hash !== hash) throw new HttpError(409, 'Mã này đã được dùng')
     return json({ ok: true, created: false })
+  }
+  if (env.ADMIN_KEY) {
+    const given = req.headers.get('X-Admin-Key') ?? ''
+    if (!given || (await sha256Hex(given)) !== (await sha256Hex(env.ADMIN_KEY))) throw new HttpError(401, 'Máy chủ này cần khoá quản trị để tạo mã đồng bộ mới.', 'admin_key_required')
   }
   const max = Number(env.MAX_VAULTS ?? 3) || 3
   const count = (await env.DB.prepare('SELECT COUNT(*) AS n FROM vaults').first<{ n: number }>())?.n ?? 0
@@ -333,12 +380,12 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   const m = req.method
 
   if (!rest && m === 'POST') return createVault(env, vault, req)
-  const seq = await authorize(env, vault, req)
-  if (!rest && m === 'GET') return json({ seq })
+  const auth = await authorize(env, vault, req)
+  if (!rest && m === 'GET') return json({ seq: auth.seq, bytes: auth.bytes })
   if (!rest && m === 'DELETE') return deleteVault(env, vault)
-  if (rest === 'ideas' && m === 'POST') return pushIdeas(env, vault, req)
+  if (rest === 'ideas' && m === 'POST') return pushIdeas(env, vault, req, auth.bytes)
   if (rest === 'ideas' && m === 'GET') return pullIdeas(env, vault, url)
-  if (rest === 'attachments' && m === 'POST') return pushAttachments(env, vault, req)
+  if (rest === 'attachments' && m === 'POST') return pushAttachments(env, vault, req, auth.bytes)
   if (rest === 'attachments' && m === 'GET') return pullAttachments(env, vault, url)
   if (rest === 'blobs/delete' && m === 'POST') return deleteBlobs(env, vault, req)
   if (rest === 'ai' && m === 'GET') return aiStatus(env, vault)
@@ -346,7 +393,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   if (rest === 'ai/structure' && m === 'POST') return aiStructure(env, vault, req)
   if (rest === 'ai/critique' && m === 'POST') return aiCritique(env, vault, req)
   const blob = rest.match(/^blobs\/([\w-]{1,100})$/)
-  if (blob && m === 'PUT') return putBlob(env, vault, blob[1], req)
+  if (blob && m === 'PUT') return putBlob(env, vault, blob[1], req, auth.bytes)
   if (blob && m === 'GET') return getBlob(env, vault, blob[1])
   throw new HttpError(404, 'Không có API này')
 }
@@ -358,7 +405,7 @@ export default {
     try {
       return await api(req, env, url)
     } catch (e) {
-      if (e instanceof HttpError) return json({ error: e.message }, e.status)
+      if (e instanceof HttpError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status)
       console.error(e)
       return json({ error: 'Lỗi máy chủ' }, 500)
     }

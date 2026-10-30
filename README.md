@@ -118,7 +118,12 @@ không chạy offline và sẽ tốn hạn mức thật), thay bằng `AI_FAKE=1
 Nội dung gửi cho AI không được mã hoá đầu cuối như dữ liệu đồng bộ: AI phải đọc được chữ. Nó đi từ app tới Worker
 của bạn rồi tới Workers AI, và chỉ khi bạn bấm.
 
-- `MAX_VAULTS` trong `wrangler.jsonc` (mặc định 3) giới hạn số mã đồng bộ máy chủ nhận, để người lạ biết địa chỉ cũng không dùng ké được D1 của bạn.
+- **Chống dùng ké.** Địa chỉ `workers.dev` là công khai, và tạo mã đồng bộ mới không cần đăng nhập. Ba lớp bảo vệ:
+  - `MAX_VAULTS` trong `wrangler.jsonc` (mặc định 3) giới hạn số mã máy chủ nhận. Tạo xong mã của bạn, đặt về `1` là người lạ không chiếm được chỗ nào.
+  - `ADMIN_KEY` (tuỳ chọn): đặt một khoá bí mật bằng `npx wrangler secret put ADMIN_KEY`. Từ đó muốn tạo mã mới phải nhập khoá này
+    (app tự hỏi khi bấm "Bật đồng bộ"). Ghép thêm máy bằng mã có sẵn thì không cần khoá. Secret giữ nguyên qua các lần deploy.
+  - `MAX_VAULT_MB` (mặc định 300): trần dung lượng mỗi kho (ý tưởng, ảnh, ghi âm). Vượt thì ghi thêm bị từ chối kèm thông báo; xoá bớt vẫn được.
+    Máy chủ tự đếm dung lượng mỗi lần ghi, không phải quét lại cả kho.
 - Nếu app nằm ở chỗ khác (vd. Vercel), build app với `VITE_SYNC_URL=https://ideos.<tài-khoản>.workers.dev` (xem `.env.example`). API đã mở CORS.
 - Giữ mã đồng bộ cẩn thận: ai có mã là đọc được dữ liệu. Mất mã thì không khôi phục được dữ liệu trên máy chủ, nhưng dữ liệu trên từng máy vẫn còn.
 

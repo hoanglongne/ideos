@@ -189,10 +189,10 @@ async function probe() {
 /* ---------- thao tác từ giao diện ---------- */
 
 /** Bật đồng bộ lần đầu: tạo mã mới cho kho dữ liệu của bạn. */
-export async function startNewVault() {
+export async function startNewVault(adminKey?: string) {
   const secret = newSecret()
   const k = await deriveKeys(secret)
-  await createVault(k)
+  await createVault(k, adminKey)
   writeSecret(secret)
   await use(secret)
   requestSync(0)

@@ -1,6 +1,7 @@
 import qrcode from 'qrcode-generator'
 import { useMemo, useState } from 'react'
 import { timeAgo } from '../lib/util'
+import { SyncHttpError } from '../sync/cloudflare'
 import { GONE, joinVault, leaveVault, requestSync, startNewVault, useSync, type SyncState } from '../sync/manager'
 import { useToast } from './Toast'
 
@@ -86,6 +87,20 @@ function Unavailable() {
 function Pair() {
   const [code, setCode] = useState(() => pendingPair ?? '')
   const [busy, run] = useAction()
+  const [needKey, setNeedKey] = useState(false)
+  const [adminKey, setAdminKey] = useState('')
+  /** Máy chủ đặt khoá quản trị thì hỏi khoá rồi mới tạo mã mới; ghép máy bằng mã có sẵn không cần khoá. */
+  const start = async () => {
+    try {
+      await startNewVault(adminKey.trim() || undefined)
+    } catch (e) {
+      if (e instanceof SyncHttpError && e.code === 'admin_key_required') {
+        setNeedKey(true)
+        throw new Error(adminKey ? 'Khoá quản trị chưa đúng.' : 'Máy chủ này cần khoá quản trị để tạo mã mới. Nhập khoá rồi bấm lại.')
+      }
+      throw e
+    }
+  }
   return (
     <>
       <div className="set-item">
@@ -93,10 +108,17 @@ function Pair() {
           <p className="item-title">Máy đầu tiên</p>
           <p className="item-desc">Tạo mã đồng bộ cho kho dữ liệu của bạn. Ý tưởng đang có trên máy này sẽ được đưa lên.</p>
         </div>
-        <button className="btn primary" disabled={busy} onClick={() => run(startNewVault)}>
+        <button className="btn primary" disabled={busy} onClick={() => run(start)}>
           Bật đồng bộ
         </button>
       </div>
+      {needKey && (
+        <label className="field set-item-block">
+          <span className="field-label">Khoá quản trị của máy chủ</span>
+          <input type="password" value={adminKey} onChange={(e) => setAdminKey(e.target.value)} autoComplete="off" aria-label="Khoá quản trị" />
+          <span className="item-desc">Là giá trị bạn đặt cho ADMIN_KEY khi cấu hình máy chủ. Chỉ cần khi tạo mã mới, không lưu lại trên máy này.</span>
+        </label>
+      )}
       <form
         className="stack set-item-block"
         onSubmit={(e) => {
