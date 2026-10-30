@@ -27,8 +27,15 @@ export interface MetaRow {
   value: unknown
 }
 
+/** Bản ý tưởng đã đồng bộ lần trước: tổ tiên chung để gộp ba chiều khi hai máy cùng sửa. */
+export interface BaseRow {
+  id: string
+  idea: Idea
+}
+
 export type IdeosDB = Dexie & {
   ideas: EntityTable<Idea & SyncFlags, 'id'>
+  bases: EntityTable<BaseRow, 'id'>
   attachments: EntityTable<Attachment & SyncFlags, 'id'>
   tombstones: EntityTable<Tombstone, 'key'>
   meta: EntityTable<MetaRow, 'key'>
@@ -64,6 +71,8 @@ export function createDb(name: string): IdeosDB {
       await tx.table('ideas').toCollection().modify({ dirty: 1 })
       await tx.table('attachments').toCollection().modify({ dirty: 1 })
     })
+
+  d.version(3).stores({ bases: 'id' })
 
   // Ý tưởng cũ (hoặc từ máy chưa cập nhật) thiếu các mảng mới: điền mặc định ngay lúc đọc,
   // thay vì một lần nâng cấp DB vốn sẽ đánh dấu mọi ý tưởng là "vừa sửa" trên mọi máy.
@@ -193,11 +202,12 @@ const tomb = (table: Tombstone['table'], id: string, deletedAt = Date.now()): To
 
 /** Xoá ý tưởng và trả về snapshot để có thể hoàn tác. */
 export async function deleteIdea(id: string, d: IdeosDB = db) {
-  return d.transaction('rw', [d.ideas, d.attachments, d.tombstones], async () => {
+  return d.transaction('rw', [d.ideas, d.attachments, d.tombstones, d.bases], async () => {
     const idea = await d.ideas.get(id)
     const atts = await d.attachments.where('ideaId').equals(id).toArray()
     await d.attachments.where('ideaId').equals(id).delete()
     await d.ideas.delete(id)
+    await d.bases.delete(id)
     await d.tombstones.bulkPut([tomb('ideas', id), ...atts.map((a) => tomb('attachments', a.id))])
     // gỡ liên kết từ các ý tưởng khác
     await d.ideas.filter((i) => i.related.includes(id)).modify((i) => {
@@ -225,7 +235,8 @@ export async function removeAttachment(id: string, d: IdeosDB = db) {
 
 /** Xoá toàn bộ. `everywhere` = ghi bia mộ để xoá luôn trên các máy khác khi đồng bộ. */
 export async function clearAll(everywhere: boolean, d: IdeosDB = db) {
-  await d.transaction('rw', [d.ideas, d.attachments, d.tombstones, d.meta], async () => {
+  await d.transaction('rw', [d.ideas, d.attachments, d.tombstones, d.meta, d.bases], async () => {
+    await d.bases.clear()
     if (everywhere) {
       const [ideaIds, attIds] = await Promise.all([d.ideas.toCollection().primaryKeys(), d.attachments.toCollection().primaryKeys()])
       await d.tombstones.bulkPut([...ideaIds.map((id) => tomb('ideas', id)), ...attIds.map((id) => tomb('attachments', id))])

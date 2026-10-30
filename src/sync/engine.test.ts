@@ -244,9 +244,121 @@ describe('syncOnce', () => {
       await syncOnce(A, server.remote('u1'))
       for (const i of await both(idea.id)) {
         expect(i.journal.map((j) => j.text)).toEqual(['ghi trên điện thoại'])
+        // tiêu đề chỉ laptop sửa, điện thoại không đụng tới: dù bản của điện thoại "mới hơn" cả ý tưởng, tiêu đề mới không được mất
+        expect(i.title).toBe('tiêu đề mới')
       }
-      // trường đơn lẻ: bản sửa sau cùng thắng
-      expect((await A.ideas.get(idea.id))!.title).toBe((await B.ideas.get(idea.id))!.title)
+    })
+
+    it('sửa các trường khác nhau trên hai máy: giữ cả hai, bất kể máy nào sửa sau', async () => {
+      const idea = await setup()
+      await sleep()
+      await updateIdea(idea.id, { title: 'tên mới từ A', 'canvas.problem': 'vấn đề từ A' }, A)
+      await sleep()
+      await updateIdea(idea.id, { body: 'mô tả từ B', 'scores.impact': 9 }, B)
+      await syncOnce(B, server.remote('u1'))
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      for (const i of await both(idea.id)) {
+        expect(i.title).toBe('tên mới từ A')
+        expect(i.canvas.problem).toBe('vấn đề từ A')
+        expect(i.body).toBe('mô tả từ B')
+        expect(i.scores.impact).toBe(9)
+      }
+      expect(await pendingCount(A)).toBe(0)
+      expect(await pendingCount(B)).toBe(0)
+    })
+
+    it('cùng sửa MỘT trường: bản sửa sau thắng, trường khác của bên thua vẫn giữ', async () => {
+      const idea = await setup()
+      await sleep()
+      await updateIdea(idea.id, { title: 'A đặt', body: 'mô tả của A' }, A)
+      await sleep()
+      await updateIdea(idea.id, { title: 'B đặt' }, B)
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      await syncOnce(A, server.remote('u1'))
+      for (const i of await both(idea.id)) {
+        expect(i.title).toBe('B đặt')
+        expect(i.body).toBe('mô tả của A')
+      }
+    })
+
+    it('tag và giả định: thêm ở hai máy thì hợp lại, xoá ở một máy (bên kia chưa động tới) thì mất', async () => {
+      const idea = await setup()
+      const as = (id: string, text: string) => ({ id, text, risk: 2 as const, test: '', status: 'untested' as const, createdAt: 1 })
+      await updateIdea(idea.id, { tags: ['a', 'b'], assumptions: [as('x', 'giả định x'), as('y', 'giả định y')] }, A)
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      await sleep()
+      // A: thêm tag c, xoá giả định x. B: thêm tag d, sửa trạng thái giả định y
+      await updateIdea(idea.id, { tags: ['a', 'b', 'c'], assumptions: [as('y', 'giả định y')] }, A)
+      await sleep()
+      await updateIdea(idea.id, { tags: ['a', 'b', 'd'], assumptions: [as('x', 'giả định x'), { ...as('y', 'giả định y'), status: 'holds' as const }] }, B)
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      await syncOnce(A, server.remote('u1'))
+      for (const i of await both(idea.id)) {
+        expect([...i.tags].sort()).toEqual(['a', 'b', 'c', 'd'])
+        // x: A xoá, B không đổi → mất. y: chỉ B sửa → giữ bản của B
+        expect(i.assumptions.map((x) => [x.id, x.status])).toEqual([['y', 'holds']])
+      }
+    })
+
+    it('một mục: A sửa chữ, B đổi trạng thái → cả hai giữ; A xoá mục mà B đã sửa → mục được giữ', async () => {
+      const idea = await setup()
+      const as = (over = {}) => ({ id: 'x', text: 'gốc', risk: 2 as const, test: '', status: 'untested' as const, createdAt: 1, ...over })
+      await updateIdea(idea.id, { assumptions: [as()] }, A)
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      await sleep()
+      await updateIdea(idea.id, { assumptions: [as({ test: 'hỏi 5 người' })] }, A)
+      await sleep()
+      await updateIdea(idea.id, { assumptions: [as({ status: 'testing' })] }, B)
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      await syncOnce(A, server.remote('u1'))
+      for (const i of await both(idea.id)) expect(i.assumptions.map((x) => [x.test, x.status])).toEqual([['hỏi 5 người', 'testing']])
+
+      await sleep()
+      await updateIdea(idea.id, { assumptions: [] }, A) // A xoá
+      await sleep()
+      await updateIdea(idea.id, { assumptions: [as({ test: 'hỏi 5 người', status: 'holds' })] }, B) // B vừa sửa
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      await syncOnce(A, server.remote('u1'))
+      for (const i of await both(idea.id)) expect(i.assumptions.map((x) => x.status)).toEqual(['holds'])
+    })
+
+    it('bài toán tiền: A đổi giá, B đổi chi phí kéo khách → giữ cả hai', async () => {
+      const idea = await setup()
+      const money = (price: number, cac: number) => ({ inputs: { model: 'saas', currency: 'VND', price, cac } as never, assumed: ['price', 'cac'] as never })
+      await updateIdea(idea.id, { money: money(100, 10) }, A)
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      await sleep()
+      await updateIdea(idea.id, { money: { ...money(250, 10), assumed: ['cac'] as never } }, A)
+      await sleep()
+      await updateIdea(idea.id, { money: { ...money(100, 77), assumed: ['price'] as never } }, B)
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      await syncOnce(A, server.remote('u1'))
+      for (const i of await both(idea.id)) {
+        expect((i.money!.inputs as unknown as { price: number }).price).toBe(250)
+        expect((i.money!.inputs as unknown as { cac: number }).cac).toBe(77)
+      }
+    })
+
+    it('chưa có bản gốc (dữ liệu cũ): quay về cách gộp cũ, vẫn không mất nhật ký', async () => {
+      const idea = await setup()
+      await A.bases.clear()
+      await sleep()
+      await updateIdea(idea.id, { title: 'A sửa' }, A)
+      await sleep()
+      await addJournal(idea.id, 'B ghi', 'note', B)
+      await syncOnce(B, server.remote('u1'))
+      await syncOnce(A, server.remote('u1'))
+      await syncOnce(B, server.remote('u1'))
+      for (const i of await both(idea.id)) expect(i.journal.map((j) => j.text)).toEqual(['B ghi'])
     })
 
     it('hai máy cùng thêm giả định và nhật ký: hợp lại đủ, theo thứ tự thời gian', async () => {
