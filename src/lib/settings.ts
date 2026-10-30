@@ -5,9 +5,11 @@ export interface Settings {
   speechLang: string
   theme: 'system' | 'light' | 'dark'
   reviewAfterDays: number
+  /** Cho phép dùng AI (chép lời, sắp xếp, phản biện, hỏi tiếp). Tắt thì app không gọi AI nào và không gửi chữ nào đi. */
+  ai: boolean
 }
 
-const DEFAULTS: Settings = { geotag: false, speechLang: 'vi-VN', theme: 'system', reviewAfterDays: 7 }
+const DEFAULTS: Settings = { geotag: false, speechLang: 'vi-VN', theme: 'system', reviewAfterDays: 7, ai: true }
 const KEY = 'ideos.settings'
 
 function load(): Settings {

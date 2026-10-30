@@ -60,3 +60,30 @@ test('Mài ý tưởng: câu trả lời chung chung thì AI hỏi tiếp, tối
   await setFold(page, 'journal', true)
   await expect(page.locator('.tl-entry.kind-coach')).toContainText('Hỏi tiếp')
 })
+
+test('tắt AI trong Cài đặt: không còn yêu cầu nào tới máy chủ AI, kể cả hỏi trạng thái', async ({ page }) => {
+  const id = await newIdea(page, 'App ghép cặp người chạy bộ')
+  await enableSync(page)
+  await page.goto('/#/settings')
+  await page.getByRole('switch', { name: 'Dùng AI' }).uncheck()
+
+  const aiCalls: string[] = []
+  page.on('request', (r) => /\/vaults\/[0-9a-f]{32}\/ai(\/|$)/.test(r.url()) && aiCalls.push(r.method() + ' ' + r.url()))
+  await page.reload()
+  await page.goto(`/#/idea/${id}`)
+  await expect(page.locator('.ai-panel')).toContainText('AI đang tắt')
+  await expect(page.locator('button:has-text("Phản biện ý tưởng này")')).toHaveCount(0)
+
+  await page.goto(`/#/idea/${id}/coach`)
+  await page.waitForSelector('.coach-prompt')
+  await page.fill('textarea[aria-label="Câu trả lời"]', 'Mình hay chạy một mình, thấy chán')
+  await page.click('.coach-actions .btn.primary')
+  await expect(page.locator('.coach-prompt')).not.toContainText('AI giả')
+  expect(aiCalls).toEqual([])
+
+  // bật lại thì dùng được ngay
+  await page.goto('/#/settings')
+  await page.getByRole('switch', { name: 'Dùng AI' }).check()
+  await page.goto(`/#/idea/${id}`)
+  await expect(page.locator('.ai-panel')).toContainText('còn')
+})

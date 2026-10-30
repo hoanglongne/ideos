@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -9,7 +11,15 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["@cloudflare/workers-types"]
+    "types": [
+      "@cloudflare/workers-types"
+    ]
   },
-  "include": ["./**/*.ts"]
+  "include": [
+    "./**/*.ts"
+  ],
+  "exclude": [
+    "testing",
+    "d1-load.test.ts"
+  ]
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Idea } from '../types'
 import { CANVAS_FIELDS } from '../types'
 import { call, SyncHttpError } from './cloudflare'
+import { useSettings } from '../lib/settings'
 import { currentKeys, useSync } from './manager'
 
 /**
@@ -80,13 +81,16 @@ export async function followup(idea: Idea, question: string, answer: string): Pr
   return ((await res.json()) as { question: string | null }).question
 }
 
-export type AiAvailability = { state: 'loading' } | { state: 'unpaired' } | { state: 'off' } | { state: 'error'; message: string } | { state: 'ready'; status: AiStatus }
+export type AiAvailability = { state: 'loading' } | { state: 'disabled' } | { state: 'unpaired' } | { state: 'off' } | { state: 'error'; message: string } | { state: 'ready'; status: AiStatus }
 
 /** Trạng thái AI cho giao diện: chưa bật đồng bộ / máy chủ chưa bật AI / sẵn sàng (kèm số lượt còn lại). */
 export function useAi() {
   const sync = useSync()
+  const { ai } = useSettings()
   const [avail, setAvail] = useState<AiAvailability>({ state: 'loading' })
   const refresh = useCallback(async () => {
+    // người dùng tắt AI: không gọi gì lên máy chủ, kể cả hỏi trạng thái
+    if (!ai) return setAvail({ state: 'disabled' })
     if (!sync.code) return setAvail({ state: 'unpaired' })
     try {
       const status = await aiStatus()
@@ -94,7 +98,7 @@ export function useAi() {
     } catch (e) {
       setAvail({ state: 'error', message: errorText(e) })
     }
-  }, [sync.code])
+  }, [sync.code, ai])
   useEffect(() => {
     refresh()
   }, [refresh])

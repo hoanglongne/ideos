@@ -164,6 +164,13 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
         </label>
         <div className="set-item">
           <div>
+            <p className="item-title">Dùng AI</p>
+            <p className="item-desc">Chép lời ghi âm, sắp xếp ý tưởng, phản biện, hỏi tiếp khi mài. Chữ gửi cho AI không được mã hoá đầu cuối (AI phải đọc được). Tắt thì app không gọi AI và không gửi gì đi.</p>
+          </div>
+          <Switch label="Dùng AI" checked={st.ai} onChange={(on) => setSettings({ ai: on })} />
+        </div>
+        <div className="set-item">
+          <div>
             <p className="item-title">Gắn vị trí khi ghi</p>
             <p className="item-desc">Để nhớ lại mình nghĩ ra ý tưởng ở đâu. Vị trí chỉ lưu trong ý tưởng.</p>
           </div>

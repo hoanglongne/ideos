@@ -81,7 +81,8 @@ npm run e2e        # trình duyệt thật (Playwright) trên bản build + Work
 
 `npm run e2e` tự build, dựng D1 trống và chạy `wrangler dev` ở cổng 8787, rồi chạy các luồng trong `e2e/`: ghi và dùng offline,
 đồng bộ hai máy (kể cả sửa lệch nhau, xoá), bài toán tiền (gõ số kiểu Việt, kết luận), điện thoại (mục thu gọn, vùng chạm 44 px),
-nhắc sao lưu, AI hỏi tiếp và phản biện. CI chạy cả hai lệnh trên mỗi PR; deploy chỉ chạy khi cả hai qua.
+nhắc sao lưu, AI hỏi tiếp, phản biện và công tắc tắt AI, và quét trợ năng bằng axe-core (0 lỗi mức nghiêm trọng trên các màn chính,
+sáng và tối). CI chạy cả hai lệnh trên mỗi PR; deploy chỉ chạy khi cả hai qua.
 
 Sinh lại icon PNG từ `public/icon.svg`: `node scripts/icons.mjs` (cần Playwright).
 
@@ -89,6 +90,12 @@ Sinh lại icon PNG từ `public/icon.svg`: `node scripts/icons.mjs` (cần Play
 
 Một Worker phục vụ cả app lẫn API đồng bộ, dữ liệu nằm trong D1. Gói Workers Free đủ dư cho một người
 (D1 free: 5 GB, 100.000 lượt ghi mỗi ngày) và không cần thẻ thanh toán.
+
+Một ngày dùng RẤT nhiều (300 lần sửa, 40 ảnh/ghi âm, 30 lượt AI, 20 lần xoá, máy kia kéo về từng thay đổi, hỏi nhẹ máy chủ
+20 giây một lần suốt 24 giờ) tốn khoảng **2.000 dòng ghi (2% hạn mức)** và **19.000 dòng đọc (0,4%)**. Con số này đo bằng cách
+chạy đúng mã của Worker trên SQLite thật (`worker/d1-load.test.ts`, chạy trong `npm test`) và đếm dòng theo cách Cloudflare tính
+(mỗi dòng ghi cộng thêm một dòng cho mỗi index); là ước tính, chưa đối chiếu với bảng thống kê trên Cloudflare. Test fail nếu một
+thay đổi làm tải vượt 10% hạn mức ghi hoặc 5% hạn mức đọc.
 
 ```bash
 npx wrangler login                    # mở trình duyệt để đăng nhập Cloudflare
@@ -120,7 +127,8 @@ Không cần commit `database_id`: nếu `wrangler.jsonc` còn id mẫu, CI tự
 Chạy trên máy (`npm run dev:api`, `npm run preview:cf`) dùng `wrangler.local.jsonc`: không có binding AI (Workers AI
 không chạy offline và sẽ tốn hạn mức thật), thay bằng `AI_FAKE=1` trả câu trả lời mẫu để thử giao diện.
 
-Nội dung gửi cho AI không được mã hoá đầu cuối như dữ liệu đồng bộ: AI phải đọc được chữ. Nó đi từ app tới Worker
+Nội dung gửi cho AI không được mã hoá đầu cuối như dữ liệu đồng bộ: AI phải đọc được chữ. Muốn tắt hẳn: Cài đặt → Tuỳ chọn → "Dùng AI";
+khi tắt, app không gọi AI nào và không gửi chữ nào đi (kể cả hỏi trạng thái). Nó đi từ app tới Worker
 của bạn rồi tới Workers AI, và chỉ khi bạn bấm.
 
 - **Chống dùng ké.** Địa chỉ `workers.dev` là công khai, và tạo mã đồng bộ mới không cần đăng nhập. Ba lớp bảo vệ:
