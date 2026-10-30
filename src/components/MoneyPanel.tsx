@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { isWide } from './Fold'
 import { addJournal, patchIdea, updateIdea } from '../db'
 import { observerFileName, toObserverFile } from '../lib/money/export'
 import { money, moneyShort, num } from '../lib/money/format'
@@ -351,7 +352,8 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
         </div>
       </details>
 
-      <h3 className="money-h">Con số nào dễ làm đổ kế hoạch nhất</h3>
+      <details className="money-sub" open={isWide()}>
+        <summary className="money-h">Con số nào dễ làm đổ kế hoạch nhất{top.length ? ` (${top.length})` : ''}</summary>
       {top.length === 0 ? (
         <p className="money-note">Chưa có con số nào để thử. Nhập giá và chi phí trước.</p>
       ) : (
@@ -385,6 +387,8 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
           </button>
         </>
       )}
+
+      </details>
 
       {!live && handoff}
     </div>

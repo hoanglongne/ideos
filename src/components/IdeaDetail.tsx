@@ -3,6 +3,7 @@ import { ArrowLeft, Copy, MapPin, Pin, Share2, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { db, deleteIdea, linkIdeas, newIdea, removeAttachment, restoreIdea, updateIdea } from '../db'
 import { ideaToMarkdown } from '../lib/backup'
+import { summarize } from '../lib/money/plan'
 import { suggestConfidence, type ConfidenceHint } from '../lib/insight'
 import { back, go } from '../lib/router'
 import { fold, iceScore, kindMeta, matchesQuery, timeAgo, uid } from '../lib/util'
@@ -10,10 +11,17 @@ import { CANVAS_FIELDS, KINDS, STATUSES, type Idea, type Scores } from '../types
 import { AiCritiquePanel, isRawIdea, useTranscribe } from './AiPanel'
 import { AttachmentList } from './Attachments'
 import { Assumptions, EvidenceList } from './Assumptions'
+import { Fold, JumpNav } from './Fold'
 import { Journal } from './Journal'
 import { MoneyPanel } from './MoneyPanel'
 import { EditableText } from './Editable'
 import { useToast } from './Toast'
+
+/** Một dòng tóm tắt cho tiêu đề mục tiền khi mục đang đóng. */
+function moneyMeta(m: NonNullable<Idea['money']>) {
+  const s = summarize(m.inputs)
+  return s.breakEvenMonth ? `hoà vốn tháng ${s.breakEvenMonth}` : `chưa hoà vốn trong ${m.inputs.horizon} tháng`
+}
 
 /** Hook phải gọi trước khi biết ý tưởng có tồn tại hay không. */
 const PLACEHOLDER = newIdea({ id: '' })
@@ -132,6 +140,17 @@ export function IdeaDetail({ id }: { id: string }) {
             </p>
           )}
 
+          <JumpNav
+            targets={[
+              { id: 'journal', label: 'Nhật ký' },
+              { id: 'assumptions', label: 'Giả định' },
+              { id: 'money', label: 'Tiền' },
+              { id: 'evidence', label: 'Bằng chứng' },
+              { id: 'tasks', label: 'Việc' },
+              { id: 'canvas', label: 'Canvas' },
+            ]}
+          />
+
           <EditableText className="body-input" value={idea.body} onSave={(body) => set({ body })} placeholder="Mô tả ý tưởng: nó là gì, cho ai, vì sao bạn nghĩ tới…" ariaLabel="Mô tả" />
 
           {tr.ready && isRawIdea(idea) && atts.some((a) => a.type === 'audio') && (
@@ -155,58 +174,51 @@ export function IdeaDetail({ id }: { id: string }) {
             }
           />
 
-          <section className="block" aria-labelledby="journal-h">
-            <div className="block-head">
-              <h2 id="journal-h">Nhật ký</h2>
-              {idea.journal.length > 0 && <span className="muted num">{idea.journal.length} ghi chú</span>}
-            </div>
+          <Fold ideaId={id} id="journal" headingId="journal-h" title="Nhật ký" meta={idea.journal.length > 0 && <span className="muted num">{idea.journal.length} ghi chú</span>}>
             <Journal idea={idea} />
-          </section>
+          </Fold>
 
-          <section className="block" aria-labelledby="as-h">
-            <div className="block-head">
-              <h2 id="as-h">Giả định</h2>
-              {idea.assumptions.length > 0 && (
+          <Fold
+            ideaId={id}
+            id="assumptions"
+            headingId="as-h"
+            title="Giả định"
+            meta={
+              idea.assumptions.length > 0 && (
                 <span className="muted num">
                   {idea.assumptions.filter((a) => a.status === 'holds' || a.status === 'broken').length}/{idea.assumptions.length} đã thử
                 </span>
-              )}
-            </div>
+              )
+            }
+          >
             <Assumptions idea={idea} onCoach={() => go(`/idea/${id}/coach`)} />
-          </section>
+          </Fold>
 
-          <section className="block" aria-labelledby="money-h">
-            <div className="block-head">
-              <h2 id="money-h">Bài toán tiền</h2>
-            </div>
+          <Fold ideaId={id} id="money" headingId="money-h" title="Bài toán tiền" meta={idea.money && <span className="muted num">{moneyMeta(idea.money)}</span>}>
             <MoneyPanel idea={idea} />
-          </section>
+          </Fold>
 
-          <section className="block" aria-labelledby="ev-h">
-            <div className="block-head">
-              <h2 id="ev-h">Bằng chứng</h2>
-              {idea.evidence.length > 0 && <span className="muted num">{idea.evidence.length}</span>}
-            </div>
+          <Fold ideaId={id} id="evidence" headingId="ev-h" title="Bằng chứng" meta={idea.evidence.length > 0 && <span className="muted num">{idea.evidence.length}</span>}>
             <EvidenceList idea={idea} />
-          </section>
+          </Fold>
 
-          <section className="block" aria-labelledby="tasks-h">
-            <div className="block-head">
-              <h2 id="tasks-h">Bước tiếp theo</h2>
-              {idea.tasks.length > 0 && (
+          <Fold
+            ideaId={id}
+            id="tasks"
+            headingId="tasks-h"
+            title="Bước tiếp theo"
+            meta={
+              idea.tasks.length > 0 && (
                 <span className="muted num">
                   {done}/{idea.tasks.length}
                 </span>
-              )}
-            </div>
+              )
+            }
+          >
             <Tasks idea={idea} onChange={(tasks) => set({ tasks })} />
-          </section>
+          </Fold>
 
-          <details className="block canvas-block" open={filled > 0}>
-            <summary className="block-head">
-              <h2>Lean canvas</h2>
-              <span className="muted num">{filled}/6 ô</span>
-            </summary>
+          <Fold ideaId={id} id="canvas" title="Lean canvas" meta={<span className="muted num">{filled}/6 ô</span>}>
             <div className="lean-canvas">
               {CANVAS_FIELDS.map((f) => (
                 <label key={f.key} className="field">
@@ -215,7 +227,7 @@ export function IdeaDetail({ id }: { id: string }) {
                 </label>
               ))}
             </div>
-          </details>
+          </Fold>
         </div>
 
         <aside className="detail-side">
@@ -356,7 +368,9 @@ function Tasks({ idea, onChange }: { idea: Idea; onChange: (t: Idea['tasks']) =>
     <div className="tasks">
       {idea.tasks.map((t) => (
         <div key={t.id} className={'task' + (t.done ? ' done' : '')}>
-          <input type="checkbox" checked={t.done} onChange={() => onChange(idea.tasks.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x)))} aria-label={t.text} />
+          <label className="check-hit">
+            <input type="checkbox" checked={t.done} onChange={() => onChange(idea.tasks.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x)))} aria-label={t.text} />
+          </label>
           <EditableText value={t.text} multiline={false} ariaLabel="Nội dung việc" onSave={(text) => onChange(idea.tasks.map((x) => (x.id === t.id ? { ...x, text } : x)))} />
           <button className="icon-btn small" aria-label="Xoá việc" onClick={() => onChange(idea.tasks.filter((x) => x.id !== t.id))}>
             <X size={14} strokeWidth={1.8} />

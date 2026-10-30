@@ -31,7 +31,9 @@ function Row({ id, title, desc, children }: { id: string; title: string; desc?: 
 
 function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <input type="checkbox" role="switch" className="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
+    <label className="check-hit">
+      <input type="checkbox" role="switch" className="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
+    </label>
   )
 }
 

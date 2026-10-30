@@ -150,7 +150,7 @@ export default function App() {
         )}
         {!IS_DEMO && <BackupNudge />}
         {route.name === 'list' && <IdeaList query={query} onQuery={setQuery} searchRef={searchRef} onNew={openCapture} dueCount={dueCount ?? 0} />}
-        {route.name === 'idea' && <IdeaDetail id={route.id} />}
+        {route.name === 'idea' && <IdeaDetail key={route.id} id={route.id} />}
         {route.name === 'coach' && <Coach id={route.id} />}
         {route.name === 'review' && <Review />}
         {route.name === 'stats' && <Stats />}
