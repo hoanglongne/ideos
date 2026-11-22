@@ -20,7 +20,9 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.goto('/')
       await capture(page, 'App ghép cặp người chạy bộ #fitness @app')
       await capture(page, 'Web so sánh giá vé xe khách #travel @web')
-      await expect(page.locator('.row')).toHaveCount(2)
+      await scan(page, 'hôm nay')
+      await page.goto('/#/ideas')
+      await expect(page.locator('.ideas .row')).toHaveCount(2)
       await scan(page, 'danh sách')
 
       await page.keyboard.press('n')

@@ -1,19 +1,24 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowLeft, Copy, MapPin, Pin, Share2, Trash2, X } from 'lucide-react'
-import { lazy, Suspense, useMemo, useState } from 'react'
-import { db, deleteIdea, linkIdeas, newIdea, removeAttachment, restoreIdea, updateIdea } from '../db'
+import { ArrowLeft, MapPin } from 'lucide-react'
+import { lazy, Suspense } from 'react'
+import { db, deleteIdea, newIdea, removeAttachment, restoreIdea, updateIdea } from '../db'
 import { ideaToMarkdown } from '../lib/backup'
+import { nextStep } from '../lib/journey'
 import { summarize } from '../lib/money/plan'
-import { suggestConfidence, type ConfidenceHint } from '../lib/insight'
+import { suggestConfidence } from '../lib/insight'
 import { back, go } from '../lib/router'
-import { fold, iceScore, kindMeta, matchesQuery, timeAgo, uid } from '../lib/util'
-import { CANVAS_FIELDS, KINDS, STATUSES, type Idea, type Scores } from '../types'
+import { timeAgo, uid } from '../lib/util'
+import { CANVAS_FIELDS, STATUSES, type Idea } from '../types'
 import { AiCritiquePanel, isRawIdea, useTranscribe } from './AiPanel'
 import { AttachmentList } from './Attachments'
 import { Assumptions, EvidenceList } from './Assumptions'
-import { Fold, JumpNav } from './Fold'
-import { Journal } from './Journal'
 import { EditableText } from './Editable'
+import { Fold, openSection } from './Fold'
+import { IceScorer, Links, Related, TagEditor, Tasks } from './IdeaParts'
+import { IdeaMenu } from './IdeaMenu'
+import { Journal } from './Journal'
+import { NextStepCard } from './NextStepCard'
+import { StageRail } from './StageRail'
 import { useToast } from './Toast'
 
 const MoneyPanel = lazy(() => import('./MoneyPanel').then((m) => ({ default: m.MoneyPanel })))
@@ -36,11 +41,11 @@ export function IdeaDetail({ id }: { id: string }) {
   if (idea === null) return null
   if (!idea)
     return (
-      <div className="detail">
-        <h1 className="detail-missing">Không tìm thấy ý tưởng này</h1>
+      <div className="idea">
+        <h1 className="idea-title">Không tìm thấy ý tưởng này</h1>
         <p className="muted">Có thể nó đã bị xoá trên máy khác.</p>
         <button className="btn" onClick={() => go('/')}>
-          Về danh sách
+          Về trang chủ
         </button>
       </div>
     )
@@ -81,409 +86,120 @@ export function IdeaDetail({ id }: { id: string }) {
     }
   }
 
+  const step = nextStep(idea)
+  const focus = (s: string) => step.section === s
   const filled = CANVAS_FIELDS.filter((f) => idea.canvas[f.key].trim()).length
   const done = idea.tasks.filter((t) => t.done).length
+  const tested = idea.assumptions.filter((a) => a.status === 'holds' || a.status === 'broken').length
 
   return (
-    <div className="detail">
-      <div className="detail-bar">
+    <article className="idea">
+      <div className="idea-bar">
         <button className="btn ghost" onClick={back}>
-          <ArrowLeft size={16} strokeWidth={1.8} aria-hidden /> Ý tưởng
+          <ArrowLeft size={16} strokeWidth={1.8} aria-hidden /> Quay lại
         </button>
         <div className="push" />
-        <button className={'icon-btn' + (idea.pinned ? ' on' : '')} onClick={() => set({ pinned: !idea.pinned })} aria-pressed={idea.pinned} aria-label={idea.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'} title={idea.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}>
-          <Pin size={17} strokeWidth={1.7} />
-        </button>
-        <button className="icon-btn" onClick={share} aria-label="Chia sẻ hoặc chép Markdown" title="Chia sẻ / chép Markdown">
-          <Share2 size={17} strokeWidth={1.7} />
-        </button>
-        <button className="icon-btn" onClick={duplicate} aria-label="Nhân bản" title="Nhân bản">
-          <Copy size={17} strokeWidth={1.7} />
-        </button>
+        <IdeaMenu
+          idea={idea}
+          onStatus={setStatus}
+          onKind={(kind) => set({ kind })}
+          onPin={() => set({ pinned: !idea.pinned })}
+          onShare={share}
+          onDuplicate={duplicate}
+          onRemove={remove}
+          coachHref={`#/idea/${id}/coach`}
+        />
       </div>
 
-      <div className="detail-grid">
-        <div className="detail-main">
-          <h1 className="detail-title">
-            <EditableText value={idea.title} onSave={(title) => set({ title })} placeholder="Tiêu đề ý tưởng" multiline={false} ariaLabel="Tiêu đề" />
-          </h1>
-          <div className="meta-line">
-            <select className="quiet-select" value={idea.kind} onChange={(e) => set({ kind: e.target.value as Idea['kind'] })} aria-label="Loại">
-              {KINDS.map((k) => (
-                <option key={k.value} value={k.value}>
-                  {k.label}
-                </option>
-              ))}
-            </select>
-            <span>Ghi {timeAgo(idea.createdAt)}</span>
-            {idea.updatedAt - idea.createdAt > 60_000 && <span>sửa {timeAgo(idea.updatedAt)}</span>}
-            {idea.location && (
-              <a href={`https://www.openstreetmap.org/?mlat=${idea.location.lat}&mlon=${idea.location.lng}#map=16/${idea.location.lat}/${idea.location.lng}`} target="_blank" rel="noreferrer">
-                <MapPin size={13} strokeWidth={1.8} aria-hidden /> Nơi nảy ra
-              </a>
-            )}
-          </div>
-
-          <div className="status-track" role="radiogroup" aria-label="Giai đoạn">
-            {STATUSES.map((s) => (
-              <button key={s.value} role="radio" aria-checked={idea.status === s.value} className={'status-opt' + (idea.status === s.value ? ' on tone-' + s.tone : '')} onClick={() => setStatus(s.value)}>
-                {s.label}
-              </button>
-            ))}
-          </div>
-
-          {idea.status === 'validating' && idea.assumptions.length === 0 && (
-            <p className="stage-hint">
-              Đang kiểm chứng nhưng chưa có giả định nào để thử.{' '}
-              <a className="text-btn" href={`#/idea/${id}/coach`}>
-                Mài ý tưởng để tìm giả định
-              </a>
-            </p>
-          )}
-
-          <JumpNav
-            targets={[
-              { id: 'journal', label: 'Nhật ký' },
-              { id: 'assumptions', label: 'Giả định' },
-              { id: 'money', label: 'Tiền' },
-              { id: 'evidence', label: 'Bằng chứng' },
-              { id: 'tasks', label: 'Việc' },
-              { id: 'canvas', label: 'Canvas' },
-            ]}
-          />
-
-          <EditableText className="body-input" value={idea.body} onSave={(body) => set({ body })} placeholder="Mô tả ý tưởng: nó là gì, cho ai, vì sao bạn nghĩ tới…" ariaLabel="Mô tả" />
-
-          {tr.ready && isRawIdea(idea) && atts.some((a) => a.type === 'audio') && (
-            <p className="stage-hint">
-              Ý tưởng này mới chỉ có ghi âm.{' '}
-              <button className="text-btn" disabled={!!tr.busyId} onClick={() => tr.run(atts.find((a) => a.type === 'audio')!)}>
-                {tr.busyId ? 'AI đang nghe…' : 'Chép lời và sắp xếp bằng AI'}
-              </button>
-            </p>
-          )}
-
-          <AttachmentList
-            items={atts}
-            onRemove={(i) => removeAttachment(atts[i].id)}
-            extra={(a) =>
-              a.type === 'audio' && tr.ready ? (
-                <button className="text-btn att-transcribe" disabled={!!tr.busyId} onClick={() => tr.run(a)}>
-                  {tr.busyId === a.id ? 'Đang chép…' : 'Chép lời'}
-                </button>
-              ) : null
-            }
-          />
-
-          <Fold ideaId={id} id="journal" headingId="journal-h" title="Nhật ký" meta={idea.journal.length > 0 && <span className="muted num">{idea.journal.length} ghi chú</span>}>
-            <Journal idea={idea} />
-          </Fold>
-
-          <Fold
-            ideaId={id}
-            id="assumptions"
-            headingId="as-h"
-            title="Giả định"
-            meta={
-              idea.assumptions.length > 0 && (
-                <span className="muted num">
-                  {idea.assumptions.filter((a) => a.status === 'holds' || a.status === 'broken').length}/{idea.assumptions.length} đã thử
-                </span>
-              )
-            }
-          >
-            <Assumptions idea={idea} onCoach={() => go(`/idea/${id}/coach`)} />
-          </Fold>
-
-          <Fold ideaId={id} id="money" headingId="money-h" title="Bài toán tiền" meta={idea.money && <span className="muted num">{moneyMeta(idea.money)}</span>}>
-            <Suspense fallback={<div className="route-loading" role="status" aria-label="Đang tải" />}>
-              <MoneyPanel idea={idea} />
-            </Suspense>
-          </Fold>
-
-          <Fold ideaId={id} id="evidence" headingId="ev-h" title="Bằng chứng" meta={idea.evidence.length > 0 && <span className="muted num">{idea.evidence.length}</span>}>
-            <EvidenceList idea={idea} />
-          </Fold>
-
-          <Fold
-            ideaId={id}
-            id="tasks"
-            headingId="tasks-h"
-            title="Bước tiếp theo"
-            meta={
-              idea.tasks.length > 0 && (
-                <span className="muted num">
-                  {done}/{idea.tasks.length}
-                </span>
-              )
-            }
-          >
-            <Tasks idea={idea} onChange={(tasks) => set({ tasks })} />
-          </Fold>
-
-          <Fold ideaId={id} id="canvas" title="Lean canvas" meta={<span className="muted num">{filled}/6 ô</span>}>
-            <div className="lean-canvas">
-              {CANVAS_FIELDS.map((f) => (
-                <label key={f.key} className="field">
-                  <span className="field-label">{f.label}</span>
-                  <EditableText className="field-input" value={idea.canvas[f.key]} placeholder={f.hint} ariaLabel={f.label} onSave={(v) => updateIdea(id, { [`canvas.${f.key}`]: v })} />
-                </label>
-              ))}
-            </div>
-          </Fold>
-        </div>
-
-        <aside className="detail-side">
-          <section className="panel coach-card" aria-labelledby="coach-h">
-            <h2 id="coach-h">Mài ý tưởng</h2>
-            <p className="panel-note">{coachPitch(idea)}</p>
-            <a className="btn primary" href={`#/idea/${id}/coach`}>
-              Bắt đầu mài
+      <header className="idea-head">
+        <h1 className="idea-title">
+          <EditableText value={idea.title} onSave={(title) => set({ title })} placeholder="Tiêu đề ý tưởng" multiline={false} ariaLabel="Tiêu đề" />
+        </h1>
+        <p className="idea-meta">
+          {idea.pinned && <span>Đã ghim</span>}
+          <span>Ghi {timeAgo(idea.createdAt)}</span>
+          {idea.updatedAt - idea.createdAt > 60_000 && <span>sửa {timeAgo(idea.updatedAt)}</span>}
+          {idea.location && (
+            <a href={`https://www.openstreetmap.org/?mlat=${idea.location.lat}&mlon=${idea.location.lng}#map=16/${idea.location.lat}/${idea.location.lng}`} target="_blank" rel="noreferrer">
+              <MapPin size={13} strokeWidth={1.8} aria-hidden /> Nơi nảy ra
             </a>
-          </section>
-          <section className="panel" aria-labelledby="ice-h">
-            <div className="panel-head">
-              <h2 id="ice-h">Điểm ICE</h2>
-            </div>
-            <IceScorer scores={idea.scores} hint={suggestConfidence(idea)} onChange={(key, v) => updateIdea(id, { [`scores.${key}`]: v })} />
-          </section>
-          <AiCritiquePanel idea={idea} />
-          <section className="panel" aria-labelledby="tags-h">
-            <div className="panel-head">
-              <h2 id="tags-h">Tag</h2>
-            </div>
-            <TagEditor tags={idea.tags} onChange={(tags) => set({ tags })} />
-          </section>
-          <section className="panel" aria-labelledby="links-h">
-            <div className="panel-head">
-              <h2 id="links-h">Liên kết tham khảo</h2>
-              {idea.links.length > 0 && <span className="muted num">{idea.links.length}</span>}
-            </div>
-            <Links links={idea.links} onChange={(links) => set({ links })} />
-          </section>
-          <section className="panel" aria-labelledby="rel-h">
-            <div className="panel-head">
-              <h2 id="rel-h">Ý tưởng liên quan</h2>
-              {idea.related.length > 0 && <span className="muted num">{idea.related.length}</span>}
-            </div>
-            <Related idea={idea} />
-          </section>
-        </aside>
-
-        <div className="delete-idea">
-          <button className="text-btn danger" onClick={remove}>
-            <Trash2 size={15} strokeWidth={1.8} aria-hidden /> Xoá ý tưởng này
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function TagEditor({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
-  const [v, setV] = useState('')
-  const add = () => {
-    const t = v.trim().replace(/^#/, '').toLowerCase().replace(/\s+/g, '-')
-    if (t && !tags.includes(t)) onChange([...tags, t])
-    setV('')
-  }
-  return (
-    <div className="tag-editor">
-      {tags.map((t) => (
-        <span key={t} className="tag">
-          #{t}
-          <button aria-label={`Bỏ tag ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))}>
-            <X size={12} strokeWidth={2} />
-          </button>
-        </span>
-      ))}
-      <input
-        value={v}
-        onChange={(e) => setV(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ',') {
-            e.preventDefault()
-            add()
-          } else if (e.key === 'Backspace' && !v && tags.length) onChange(tags.slice(0, -1))
-        }}
-        onBlur={add}
-        placeholder={tags.length ? 'Thêm tag' : 'Gõ tag rồi Enter'}
-        aria-label="Thêm tag"
-      />
-    </div>
-  )
-}
-
-/** Lời mời mài ý tưởng, nói đúng chỗ ý tưởng đang thiếu. */
-function coachPitch(idea: Idea) {
-  if (!idea.canvas.problem.trim()) return 'Chưa rõ vấn đề cụ thể là gì. 5 câu hỏi ngắn sẽ giúp bạn nói được ai đang đau và vì sao.'
-  if (!idea.assumptions.length) return 'Đã có vấn đề, nhưng chưa ghi ra điều gì phải đúng. Mài để tìm giả định rủi ro nhất và cách thử nó.'
-  if (!idea.evidence.length) return 'Đã có giả định, chưa có bằng chứng. Mài để chọn một phép thử làm được trong tuần này.'
-  return 'Ôn lại ý tưởng với vài câu hỏi theo giai đoạn hiện tại. Câu trả lời tự vào canvas, giả định và nhật ký.'
-}
-
-const ICE_LABELS: { key: keyof Scores; label: string; hint: string }[] = [
-  { key: 'impact', label: 'Tác động', hint: 'Giá trị nếu thành công' },
-  { key: 'confidence', label: 'Tự tin', hint: 'Khả năng nó hiệu quả' },
-  { key: 'ease', label: 'Dễ làm', hint: '10 là vài ngày xong' },
-]
-
-function IceScorer({ scores, hint, onChange }: { scores: Scores; hint: ConfidenceHint | null; onChange: (key: keyof Scores, v: number) => void }) {
-  const total = iceScore({ scores })
-  return (
-    <div className="ice">
-      <p className="ice-total">
-        <span className={'ice-figure big num' + (total === null ? ' none' : '')}>{total === null ? '—' : total.toFixed(1)}</span>
-        <span className="muted">{total === null ? 'Chấm đủ 3 mục để có điểm' : 'trên 10, dùng để xếp hạng'}</span>
-      </p>
-      {ICE_LABELS.map((f) => (
-        <label key={f.key} className="ice-row">
-          <span className="ice-name">
-            {f.label}
-            <span className="muted">{f.hint}</span>
-          </span>
-          <span className={'ice-val num' + (scores[f.key] ? '' : ' none')}>{scores[f.key] || '—'}</span>
-          <input type="range" min={0} max={10} value={scores[f.key]} onChange={(e) => onChange(f.key, +e.target.value)} aria-label={f.label} />
-          {f.key === 'confidence' && hint && hint.value !== scores.confidence && (
-            <span className="ice-hint">
-              Từ bằng chứng: <b className="num">{hint.value}</b> ({hint.reason}).{' '}
-              <button type="button" className="text-btn" onClick={() => onChange('confidence', hint.value)}>
-                Dùng
-              </button>
-            </span>
           )}
-        </label>
-      ))}
-    </div>
-  )
-}
+        </p>
+      </header>
 
-const TASK_SUGGESTIONS = ['Tìm 3 đối thủ', 'Hỏi 5 người xem họ có cần không', 'Làm một landing page', 'Vẽ wireframe']
+      <StageRail status={idea.status} />
 
-function Tasks({ idea, onChange }: { idea: Idea; onChange: (t: Idea['tasks']) => void }) {
-  const [v, setV] = useState('')
-  const add = (text: string) => {
-    if (!text.trim()) return
-    onChange([...idea.tasks, { id: uid(), text: text.trim(), done: false }])
-    setV('')
-  }
-  return (
-    <div className="tasks">
-      {idea.tasks.map((t) => (
-        <div key={t.id} className={'task' + (t.done ? ' done' : '')}>
-          <label className="check-hit">
-            <input type="checkbox" checked={t.done} onChange={() => onChange(idea.tasks.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x)))} aria-label={t.text} />
-          </label>
-          <EditableText value={t.text} multiline={false} ariaLabel="Nội dung việc" onSave={(text) => onChange(idea.tasks.map((x) => (x.id === t.id ? { ...x, text } : x)))} />
-          <button className="icon-btn small" aria-label="Xoá việc" onClick={() => onChange(idea.tasks.filter((x) => x.id !== t.id))}>
-            <X size={14} strokeWidth={1.8} />
+      <NextStepCard idea={idea} step={step} onStatus={setStatus} onOpen={openSection} />
+
+      <EditableText className="body-input" value={idea.body} onSave={(body) => set({ body })} placeholder="Mô tả ý tưởng: nó là gì, cho ai, vì sao bạn nghĩ tới…" ariaLabel="Mô tả" />
+
+      {tr.ready && isRawIdea(idea) && atts.some((a) => a.type === 'audio') && (
+        <p className="stage-hint">
+          Ý tưởng này mới chỉ có ghi âm.{' '}
+          <button className="text-btn" disabled={!!tr.busyId} onClick={() => tr.run(atts.find((a) => a.type === 'audio')!)}>
+            {tr.busyId ? 'AI đang nghe…' : 'Chép lời và sắp xếp bằng AI'}
           </button>
-        </div>
-      ))}
-      <form
-        className="add-row"
-        onSubmit={(e) => {
-          e.preventDefault()
-          add(v)
-        }}
-      >
-        <input value={v} onChange={(e) => setV(e.target.value)} placeholder="Việc nhỏ nhất để tiến thêm một bước" aria-label="Thêm việc" />
-        <button className="btn" type="submit" disabled={!v.trim()}>
-          Thêm
-        </button>
-      </form>
-      {idea.tasks.length === 0 && (
-        <p className="suggest">
-          Gợi ý:{' '}
-          {TASK_SUGGESTIONS.map((s, i) => (
-            <span key={s}>
-              <button className="text-btn" onClick={() => add(s)}>
-                {s}
-              </button>
-              {i < TASK_SUGGESTIONS.length - 1 ? ' · ' : ''}
-            </span>
-          ))}
         </p>
       )}
-    </div>
-  )
-}
 
-function Links({ links, onChange }: { links: string[]; onChange: (l: string[]) => void }) {
-  const [v, setV] = useState('')
-  return (
-    <div className="links">
-      {links.map((l) => (
-        <div key={l} className="link-row">
-          <a href={/^https?:\/\//.test(l) ? l : 'https://' + l} target="_blank" rel="noreferrer">
-            {l.replace(/^https?:\/\/(www\.)?/, '')}
-          </a>
-          <button className="icon-btn small" aria-label="Xoá liên kết" onClick={() => onChange(links.filter((x) => x !== l))}>
-            <X size={14} strokeWidth={1.8} />
-          </button>
-        </div>
-      ))}
-      <form
-        className="add-row"
-        onSubmit={(e) => {
-          e.preventDefault()
-          const t = v.trim()
-          if (t && !links.includes(t)) onChange([...links, t])
-          setV('')
-        }}
-      >
-        <input value={v} onChange={(e) => setV(e.target.value)} placeholder="Dán link đối thủ, bài viết…" inputMode="url" aria-label="Thêm liên kết" />
-        <button className="btn" type="submit" disabled={!v.trim()}>
-          Thêm
-        </button>
-      </form>
-    </div>
-  )
-}
+      <AttachmentList
+        items={atts}
+        onRemove={(i) => removeAttachment(atts[i].id)}
+        extra={(a) =>
+          a.type === 'audio' && tr.ready ? (
+            <button className="text-btn att-transcribe" disabled={!!tr.busyId} onClick={() => tr.run(a)}>
+              {tr.busyId === a.id ? 'Đang chép…' : 'Chép lời'}
+            </button>
+          ) : null
+        }
+      />
 
-function Related({ idea }: { idea: Idea }) {
-  const all = useLiveQuery(() => db.ideas.toArray(), [], [])
-  const [q, setQ] = useState('')
-  const linked = all.filter((i) => idea.related.includes(i.id))
-  const suggestions = useMemo(() => {
-    const others = all.filter((i) => i.id !== idea.id && !idea.related.includes(i.id))
-    if (q.trim()) return others.filter((i) => matchesQuery(i, q)).slice(0, 5)
-    // gợi ý theo tag chung / từ chung trong tiêu đề
-    const words = new Set(fold(idea.title).split(/\W+/).filter((w) => w.length > 3))
-    return others
-      .map((i) => ({
-        i,
-        s: i.tags.filter((t) => idea.tags.includes(t)).length * 2 + fold(i.title).split(/\W+/).filter((w) => words.has(w)).length,
-      }))
-      .filter((x) => x.s > 0)
-      .sort((a, b) => b.s - a.s)
-      .slice(0, 3)
-      .map((x) => x.i)
-  }, [all, idea, q])
+      <div className="parts">
+        <Fold ideaId={id} id="assumptions" headingId="as-h" title="Giả định" defaultOpen={focus('assumptions')} meta={idea.assumptions.length > 0 && `${tested}/${idea.assumptions.length} đã thử`}>
+          <Assumptions idea={idea} onCoach={() => go(`/idea/${id}/coach`)} />
+          <AiCritiquePanel idea={idea} />
+        </Fold>
 
-  return (
-    <div className="related">
-      {linked.map((i) => (
-        <div key={i.id} className="link-row">
-          <a href={'#/idea/' + i.id}>{i.title}</a>
-          <span className="muted">{kindMeta(i.kind).label}</span>
-          <button className="icon-btn small" aria-label="Bỏ liên kết" onClick={() => linkIdeas(idea.id, i.id, false)}>
-            <X size={14} strokeWidth={1.8} />
-          </button>
-        </div>
-      ))}
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm ý tưởng để nối" aria-label="Tìm ý tưởng liên quan" />
-      {suggestions.length > 0 && (
-        <ul className="suggest-list" aria-label={q ? 'Kết quả' : 'Gợi ý'}>
-          {suggestions.map((i) => (
-            <li key={i.id}>
-              <button className="text-btn" onClick={() => (linkIdeas(idea.id, i.id, true), setQ(''))}>
-                Nối với “{i.title}”
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+        <Fold ideaId={id} id="evidence" headingId="ev-h" title="Bằng chứng" defaultOpen={focus('evidence')} meta={idea.evidence.length > 0 && String(idea.evidence.length)}>
+          <EvidenceList idea={idea} />
+        </Fold>
+
+        <Fold ideaId={id} id="money" headingId="money-h" title="Bài toán tiền" defaultOpen={focus('money')} meta={idea.money && moneyMeta(idea.money)}>
+          <Suspense fallback={<div className="route-loading" role="status" aria-label="Đang tải" />}>
+            <MoneyPanel idea={idea} />
+          </Suspense>
+        </Fold>
+
+        <Fold ideaId={id} id="journal" headingId="journal-h" title="Nhật ký" defaultOpen={focus('journal')} meta={idea.journal.length > 0 && `${idea.journal.length} ghi chú`}>
+          <Journal idea={idea} />
+        </Fold>
+
+        <Fold ideaId={id} id="tasks" headingId="tasks-h" title="Việc cần làm" defaultOpen={focus('tasks')} meta={idea.tasks.length > 0 && `${done}/${idea.tasks.length}`}>
+          <Tasks idea={idea} onChange={(tasks) => set({ tasks })} />
+        </Fold>
+
+        <Fold ideaId={id} id="canvas" title="Lean canvas" defaultOpen={focus('canvas')} meta={`${filled}/6 ô`}>
+          <div className="lean-canvas">
+            {CANVAS_FIELDS.map((f) => (
+              <label key={f.key} className="field">
+                <span className="field-label">{f.label}</span>
+                <EditableText className="field-input" value={idea.canvas[f.key]} placeholder={f.hint} ariaLabel={f.label} onSave={(v) => updateIdea(id, { [`canvas.${f.key}`]: v })} />
+              </label>
+            ))}
+          </div>
+        </Fold>
+
+        <Fold ideaId={id} id="details" title="Điểm, nhãn và liên kết" defaultOpen={focus('details')} meta={idea.tags.length + idea.links.length + idea.related.length > 0 && `${idea.tags.length} nhãn`}>
+          <h3 className="part-h">Điểm ICE</h3>
+          <IceScorer scores={idea.scores} hint={suggestConfidence(idea)} onChange={(key, v) => updateIdea(id, { [`scores.${key}`]: v })} />
+          <h3 className="part-h">Nhãn</h3>
+          <TagEditor tags={idea.tags} onChange={(tags) => set({ tags })} />
+          <h3 className="part-h">Liên kết tham khảo</h3>
+          <Links links={idea.links} onChange={(links) => set({ links })} />
+          <h3 className="part-h">Ý tưởng liên quan</h3>
+          <Related idea={idea} />
+        </Fold>
+      </div>
+    </article>
   )
 }

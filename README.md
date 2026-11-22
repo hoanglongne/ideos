@@ -3,6 +3,27 @@
 Sổ ghi ý tưởng web / app / startup / sản phẩm — dành cho lúc chợt nghĩ ra gì đó khi đang đi ngoài đường.
 PWA offline-first: cài lên màn hình chính, mở tức thì, ghi được cả khi không có mạng. Dữ liệu nằm hoàn toàn trên máy (IndexedDB).
 
+## Một đường đi duy nhất
+
+Mỗi ý tưởng đi qua cùng một hành trình: **Ghi → Mài → Thử → Quyết → Làm → Ra mắt**, và luôn có đúng **một bước tiếp theo**,
+tính từ chính trạng thái của ý tưởng (`src/lib/journey.ts`):
+
+| Ý tưởng đang ở | Bước tiếp theo |
+|---|---|
+| Mới ghi, chưa rõ vấn đề và người dùng | Mài ý tưởng (vài câu hỏi) |
+| Rõ rồi, chưa có giả định | Tìm điều phải đúng |
+| Có giả định | Chuyển sang Kiểm chứng |
+| Kiểm chứng | Thử giả định rủi ro cao nhất, ghi kết quả ngay trên thẻ |
+| Đã thử hết | Tính bài toán tiền, rồi chấm điểm và quyết định: đi tiếp / để sau / bỏ |
+| Đang làm | Việc chưa xong đầu tiên, hết việc thì ra mắt |
+| Đã ra mắt | Theo dõi số thật (xuất sang Sổ Cái) |
+
+- **Hôm nay** (màn đầu) chỉ nêu việc quan trọng nhất trên mọi ý tưởng và dẫn thẳng tới đó; giả định rủi ro cao xếp trước.
+- **Trang ý tưởng** một cột: thanh hành trình, thẻ "Bước tiếp theo" (một nút chính), rồi các phần (giả định, bằng chứng, tiền, nhật ký,
+  việc, canvas, điểm và nhãn) xếp thành danh sách dòng có số liệu tóm tắt; phần nào cần cho bước hiện tại thì mở sẵn.
+  Giai đoạn, loại, ghim, chia sẻ, nhân bản, xoá nằm sau nút ⋯.
+- **Ý tưởng** là danh sách đầy đủ (tìm, chia nhóm); lọc theo loại, nhãn, sắp xếp nằm sau một nút.
+
 ## Tính năng
 
 **Ghi nhanh**
@@ -26,7 +47,6 @@ PWA offline-first: cài lên màn hình chính, mở tức thì, ghi được c�
   Confidence không vượt 5. Công thức port rút gọn từ dự án observer ("Sổ Cái"); dữ liệu nằm trong ý tưởng nên đồng bộ như mọi thứ khác.
   Khi ý tưởng chuyển sang "Đang làm" hoặc "Đã ra mắt", nút **Tải file cho Sổ Cái** xuất kế hoạch thành file mà Sổ Cái
   nhập được (⚙ → Sao lưu & nhập file → Nhập → Gộp), để mỗi tháng so kế hoạch với số thật. Xuất lại thì cập nhật cùng dự án.
-- **Việc tiếp theo:** màn chính gom việc nên làm trên mọi ý tưởng, thử giả định rủi ro cao trước.
 - **AI (Workers AI, miễn phí):** chép lời ghi âm và tự sắp xếp ý tưởng chỉ có ghi âm thành tiêu đề, mô tả, vấn đề;
   "AI phản biện" chỉ ra điểm yếu, giả định chưa ghi, câu nên hỏi người dùng. Chỉ gửi khi bạn bấm; cần bật đồng bộ.
 

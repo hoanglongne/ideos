@@ -18,19 +18,26 @@ function write(k: string, open: boolean) {
   }
 }
 
-export const isWide = () => typeof matchMedia === 'function' && matchMedia('(min-width: 1024px)').matches
+/** Mở một mục của trang ý tưởng rồi cuộn tới nó. */
+export function openSection(id: string) {
+  const el = document.getElementById('sec-' + id) as HTMLDetailsElement | null
+  if (!el) return
+  el.open = true
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches
+  el.scrollIntoView({ block: 'start', behavior: calm ? 'auto' : 'smooth' })
+}
 
 /**
- * Một mục của trang ý tưởng, thu gọn được. Trên điện thoại mọi mục đóng sẵn (tiêu đề mục đã có số liệu tóm tắt)
- * để trang khỏi dài cả chục màn hình; trên màn rộng mọi mục mở. Mở hay đóng thì nhớ riêng cho từng ý tưởng.
+ * Một mục của trang ý tưởng, thu gọn được. Mặc định đóng, trừ mục đang cần cho bước tiếp theo (`defaultOpen`);
+ * tiêu đề mục đã có số liệu tóm tắt nên không cần mở để biết bên trong có gì. Mở hay đóng thì nhớ riêng cho từng ý tưởng.
  */
-export function Fold({ ideaId, id, headingId, title, meta, children }: { ideaId: string; id: string; headingId?: string; title: string; meta?: ReactNode; children: ReactNode }) {
+export function Fold({ ideaId, id, headingId, title, meta, defaultOpen = false, children }: { ideaId: string; id: string; headingId?: string; title: string; meta?: ReactNode; defaultOpen?: boolean; children: ReactNode }) {
   const k = storeKey(ideaId, id)
-  const [open, setOpen] = useState(() => read(k) ?? isWide())
+  const [open, setOpen] = useState(() => read(k) ?? defaultOpen)
   return (
     <details
       id={'sec-' + id}
-      className="block fold"
+      className="part"
       open={open}
       onToggle={(e) => {
         const o = e.currentTarget.open
@@ -38,36 +45,11 @@ export function Fold({ ideaId, id, headingId, title, meta, children }: { ideaId:
         write(k, o)
       }}
     >
-      <summary className="block-head">
+      <summary>
         <h2 id={headingId}>{title}</h2>
-        {meta}
+        {meta && <span className="part-meta">{meta}</span>}
       </summary>
-      {children}
+      <div className="part-body">{children}</div>
     </details>
-  )
-}
-
-export interface JumpTarget {
-  id: string
-  label: string
-}
-
-/** Thanh nhảy nhanh tới từng mục (chỉ hiện trên điện thoại): mở mục rồi cuộn tới. */
-export function JumpNav({ targets }: { targets: JumpTarget[] }) {
-  const go = (id: string) => {
-    const el = document.getElementById('sec-' + id) as HTMLDetailsElement | null
-    if (!el) return
-    el.open = true
-    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches
-    el.scrollIntoView({ block: 'start', behavior: calm ? 'auto' : 'smooth' })
-  }
-  return (
-    <nav className="jump-nav" aria-label="Nhảy tới mục">
-      {targets.map((t) => (
-        <button key={t.id} type="button" onClick={() => go(t.id)}>
-          {t.label}
-        </button>
-      ))}
-    </nav>
   )
 }

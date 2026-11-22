@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { capture, enableSync, joinSync, syncNow } from './helpers'
+import { capture, enableSync, joinSync, setFold, syncNow } from './helpers'
 
 test('hai máy: ghép bằng mã, sửa lệch nhau thì gộp lại, xoá thì mất ở máy kia', async ({ browser }) => {
   const A = await (await browser.newContext()).newPage()
@@ -15,15 +15,19 @@ test('hai máy: ghép bằng mã, sửa lệch nhau thì gộp lại, xoá thì 
   await B.click('button:has-text("Ghép máy này")')
   await expect(B.locator('.toast')).toContainText(/không đúng|không có|chưa/i)
   await joinSync(B, code.toLowerCase().replace(/-/g, ' '))
-  await B.goto('/#/')
-  await expect(B.locator('.row-title')).toHaveText(['Cho thuê đồ cắm trại cuối tuần'])
+  await B.goto('/#/ideas')
+  await expect(B.locator('.ideas .row-title')).toHaveText(['Cho thuê đồ cắm trại cuối tuần'])
 
   // A mất mạng và đổi tên; B ghi thêm nhật ký cùng lúc
-  await A.goto('/#/')
-  await A.locator('.row').click()
-  await B.locator('.row').click()
+  await A.goto('/#/ideas')
+  await A.locator('.ideas .row').click()
+  await B.locator('.ideas .row').click()
+  await A.waitForSelector('.idea')
+  await B.waitForSelector('.idea')
+  await setFold(A, 'journal', true)
+  await setFold(B, 'journal', true)
   await A.context().setOffline(true)
-  await A.locator('.detail-title textarea').fill('Cho thuê đồ cắm trại (tên mới trên A)')
+  await A.locator('.idea-title textarea').fill('Cho thuê đồ cắm trại (tên mới trên A)')
   await A.locator('.body-input').click()
   await B.fill('textarea[aria-label="Ghi thêm vào nhật ký"]', 'Nhật ký viết trên B')
   await B.click('.journal-add .btn')
@@ -35,20 +39,24 @@ test('hai máy: ghép bằng mã, sửa lệch nhau thì gộp lại, xoá thì 
 
   // cả hai máy đều có cả tên mới lẫn dòng nhật ký: không bên nào đè mất bên nào
   for (const page of [A, B]) {
-    await page.goto('/#/')
-    await page.locator('.row').click()
-    await expect(page.locator('.detail-title textarea')).toHaveValue('Cho thuê đồ cắm trại (tên mới trên A)')
+    await page.goto('/#/ideas')
+    await page.locator('.ideas .row').click()
+    await page.waitForSelector('.idea')
+    await setFold(page, 'journal', true)
+    await expect(page.locator('.idea-title textarea')).toHaveValue('Cho thuê đồ cắm trại (tên mới trên A)')
     await expect(page.locator('.tl-entry')).toContainText('Nhật ký viết trên B')
   }
 
   // A xoá, B đồng bộ thì mất theo
+  await A.locator('summary[aria-label="Thêm tuỳ chọn"]').click()
   await A.getByRole('button', { name: 'Xoá ý tưởng này' }).click()
   await expect(A).toHaveURL(/#\/$/) // xoá xong app tự về danh sách
-  await expect(A.locator('.row')).toHaveCount(0)
+  await A.goto('/#/ideas')
+  await expect(A.locator('.ideas .row')).toHaveCount(0)
   await syncNow(A)
   await syncNow(B)
-  await B.goto('/#/')
-  await expect(B.locator('.row')).toHaveCount(0)
+  await B.goto('/#/ideas')
+  await expect(B.locator('.ideas .row')).toHaveCount(0)
 })
 
 test('máy kia tự nhận thay đổi mà không cần bấm gì', async ({ browser }) => {
@@ -59,10 +67,9 @@ test('máy kia tự nhận thay đổi mà không cần bấm gì', async ({ bro
   const code = await enableSync(A)
   const B = await (await browser.newContext()).newPage()
   await joinSync(B, code)
-  await B.goto('/#/')
-  await expect(B.locator('.row')).toHaveCount(1)
-  await A.goto('/#/')
+  await B.goto('/#/ideas')
+  await expect(B.locator('.ideas .row')).toHaveCount(1)
   await capture(A, 'Thêm một ý tưởng trên A')
   // B hỏi máy chủ định kỳ (20 giây một lần) nên sẽ tự thấy
-  await expect(B.locator('.row')).toHaveCount(2, { timeout: 60_000 })
+  await expect(B.locator('.ideas .row')).toHaveCount(2, { timeout: 60_000 })
 })

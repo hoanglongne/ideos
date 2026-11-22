@@ -42,12 +42,13 @@ export async function phoneContext(browser: Browser): Promise<BrowserContext> {
 
 /** Ghi một ý tưởng rồi mở trang chi tiết của nó. Trả về id. */
 export async function newIdea(page: Page, text: string): Promise<string> {
-  await page.goto('/#/')
+  await page.goto('/#/ideas')
   await capture(page, text)
-  await page.locator('.row').first().click()
-  await page.waitForSelector('#sec-journal')
+  await page.locator('.ideas .row').first().click()
+  await page.waitForSelector('.idea')
   return page.url().split('/idea/')[1]
 }
+
 
 /** Mở hoặc đóng một mục của trang ý tưởng. */
 export async function setFold(page: Page, id: string, open: boolean) {

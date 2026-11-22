@@ -1,11 +1,12 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { BarChart3, Lightbulb, Plus, RotateCcw, Settings as SettingsIcon } from 'lucide-react'
+import { BarChart3, Lightbulb, Plus, RotateCcw, Settings as SettingsIcon, Sun } from 'lucide-react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { BackupNudge } from './components/BackupNudge'
 import { CaptureSheet } from './components/CaptureSheet'
 import { IdeaDetail } from './components/IdeaDetail'
 import { IdeaList } from './components/IdeaList'
+import { Today } from './components/Today'
 import { Mark } from './components/Mark'
 import type { InstallPromptEvent } from './components/Settings'
 import { SyncStatus, takePairLink } from './components/SyncPanel'
@@ -36,7 +37,8 @@ const LAUNCH = takeLaunchParams()
 takePairLink()
 
 const NAV: { route: Route['name']; href: string; label: string; short: string; Icon: typeof Lightbulb }[] = [
-  { route: 'list', href: '#/', label: 'Ý tưởng', short: 'Ý tưởng', Icon: Lightbulb },
+  { route: 'list', href: '#/', label: 'Hôm nay', short: 'Hôm nay', Icon: Sun },
+  { route: 'ideas', href: '#/ideas', label: 'Ý tưởng', short: 'Ý tưởng', Icon: Lightbulb },
   { route: 'review', href: '#/review', label: 'Ôn lại', short: 'Ôn lại', Icon: RotateCcw },
   { route: 'stats', href: '#/stats', label: 'Thống kê', short: 'Thống kê', Icon: BarChart3 },
 ]
@@ -86,7 +88,7 @@ export default function App() {
         setCapture({})
       } else if (e.key === '/') {
         e.preventDefault()
-        if (route.name !== 'list') go('/')
+        if (route.name !== 'ideas') go('/ideas')
         setTimeout(() => searchRef.current?.focus(), 0)
       }
     }
@@ -94,7 +96,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [route.name])
 
-  const active = route.name === 'idea' || route.name === 'coach' ? 'list' : route.name
+  const active = route.name === 'idea' || route.name === 'coach' ? 'ideas' : route.name
   const openCapture = () => setCapture({})
 
   return (
@@ -153,7 +155,8 @@ export default function App() {
         )}
         {!IS_DEMO && <BackupNudge />}
         <Suspense fallback={<div className="route-loading" role="status" aria-label="Đang tải" />}>
-        {route.name === 'list' && <IdeaList query={query} onQuery={setQuery} searchRef={searchRef} onNew={openCapture} dueCount={dueCount ?? 0} />}
+        {route.name === 'list' && <Today onNew={openCapture} dueCount={dueCount ?? 0} />}
+        {route.name === 'ideas' && <IdeaList query={query} onQuery={setQuery} searchRef={searchRef} />}
         {route.name === 'idea' && <IdeaDetail key={route.id} id={route.id} />}
         {route.name === 'coach' && <Coach id={route.id} />}
         {route.name === 'review' && <Review />}

@@ -30,8 +30,8 @@ function backupFile(n: number, oldestDaysAgo: number) {
 test('nhắc sao lưu khi dữ liệu chỉ nằm trên một máy, để sau thì im, tải xong thì hết nhắc', async ({ page }) => {
   await page.goto('/#/settings')
   await page.setInputFiles('input[type=file]', { name: 'ideos-backup.json', mimeType: 'application/json', buffer: backupFile(4, 40) })
-  await page.goto('/#/')
-  await expect(page.locator('.row')).toHaveCount(4)
+  await page.goto('/#/ideas')
+  await expect(page.locator('.ideas .row')).toHaveCount(4)
   const nudge = page.locator('.nudge')
   await expect(nudge).toContainText('Chưa sao lưu lần nào')
   await expect(nudge).toContainText('4 ý tưởng')
@@ -39,7 +39,7 @@ test('nhắc sao lưu khi dữ liệu chỉ nằm trên một máy, để sau th
   await nudge.getByRole('button', { name: 'Để sau' }).click()
   await expect(nudge).toHaveCount(0)
   await page.reload()
-  await expect(page.locator('.row')).toHaveCount(4)
+  await expect(page.locator('.ideas .row')).toHaveCount(4)
   await expect(nudge).toHaveCount(0)
 
   await page.evaluate(() => localStorage.removeItem('ideos:backupNudgeUntil'))
@@ -55,7 +55,7 @@ test('nhắc sao lưu khi dữ liệu chỉ nằm trên một máy, để sau th
 test('người mới (ít ý tưởng, mới ghi) không bị nhắc', async ({ page }) => {
   await page.goto('/#/settings')
   await page.setInputFiles('input[type=file]', { name: 'b.json', mimeType: 'application/json', buffer: backupFile(2, 40) })
-  await page.goto('/#/')
-  await expect(page.locator('.row')).toHaveCount(2)
+  await page.goto('/#/ideas')
+  await expect(page.locator('.ideas .row')).toHaveCount(2)
   await expect(page.locator('.nudge')).toHaveCount(0)
 })
