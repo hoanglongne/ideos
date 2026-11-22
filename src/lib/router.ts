@@ -1,26 +1,13 @@
 import { useEffect, useState } from 'react'
 
-export type Route =
-  | { name: 'list' }
-  | { name: 'idea'; id: string }
-  | { name: 'coach'; id: string }
-  | { name: 'review' }
-  | { name: 'stats' }
-  | { name: 'settings' }
+export type Route = { name: 'home' } | { name: 'idea'; id: string } | { name: 'coach'; id: string } | { name: 'settings' }
 
+/** Chỉ còn bốn màn: trang chủ, một ý tưởng, mài ý tưởng, cài đặt. Đường dẫn cũ (ôn lại, thống kê, danh sách) về trang chủ. */
 export function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
-  switch (parts[0]) {
-    case 'idea':
-      if (!parts[1]) return { name: 'list' }
-      return parts[2] === 'coach' ? { name: 'coach', id: decodeURIComponent(parts[1]) } : { name: 'idea', id: decodeURIComponent(parts[1]) }
-    case 'review':
-    case 'stats':
-    case 'settings':
-      return { name: parts[0] }
-    default:
-      return { name: 'list' }
-  }
+  if (parts[0] === 'idea' && parts[1]) return parts[2] === 'coach' ? { name: 'coach', id: decodeURIComponent(parts[1]) } : { name: 'idea', id: decodeURIComponent(parts[1]) }
+  if (parts[0] === 'settings') return { name: 'settings' }
+  return { name: 'home' }
 }
 
 export function useRoute() {

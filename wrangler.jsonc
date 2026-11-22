@@ -22,6 +22,8 @@
   "vars": {
     // Số mã đồng bộ tối đa máy chủ chấp nhận, để người lạ không dùng ké được D1 của bạn
     "MAX_VAULTS": "3",
+    // Trần dung lượng mỗi kho (MB): ý tưởng + ảnh + ghi âm. Để một người dùng không làm đầy D1 miễn phí 5 GB
+    "MAX_VAULT_MB": "300",
     // Số lần gọi AI tối đa mỗi ngày cho mỗi mã đồng bộ, để không vượt hạn mức miễn phí
     "AI_DAILY_LIMIT": "30",
     // Model hay bị Cloudflare thay/khai tử; đổi ở đây là đủ, không cần sửa code

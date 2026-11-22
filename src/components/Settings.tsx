@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { clearAll } from '../db'
 import { exportJson, exportMarkdown, importJson } from '../lib/backup'
+import { backupAgo, lastBackupAt, markBackup } from '../lib/safety'
 import { getLocation } from '../lib/media'
 import { setSettings, useSettings } from '../lib/settings'
 import { downloadBlob } from '../lib/util'
@@ -30,7 +31,9 @@ function Row({ id, title, desc, children }: { id: string; title: string; desc?: 
 
 function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <input type="checkbox" role="switch" className="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
+    <label className="check-hit">
+      <input type="checkbox" role="switch" className="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
+    </label>
   )
 }
 
@@ -41,6 +44,7 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [persisted, setPersisted] = useState<boolean | null>(null)
+  const [backupAt, setBackupAt] = useState(lastBackupAt())
   const [usage, setUsage] = useState<{ usage?: number; quota?: number }>({})
 
   const refreshStorage = () => {
@@ -104,17 +108,26 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
         <div className="set-item">
           <div>
             <p className="item-title">Sao lưu và khôi phục</p>
-            <p className="item-desc">File JSON gồm cả ảnh và ghi âm. Khôi phục sẽ gộp, bản nào sửa sau thì giữ bản đó.</p>
+            <p className="item-desc">
+              File JSON gồm cả ảnh và ghi âm. Khôi phục sẽ gộp, bản nào sửa sau thì giữ bản đó. Sao lưu gần nhất: {backupAgo(backupAt)}.
+            </p>
           </div>
         </div>
         <div className="row-actions">
-          <button className="btn" onClick={async () => downloadBlob(await exportJson(), `ideos-backup-${stamp()}.json`)}>
+          <button
+            className="btn"
+            onClick={async () => {
+              downloadBlob(await exportJson(), `ideos-backup-${stamp()}.json`)
+              markBackup()
+              setBackupAt(Date.now())
+            }}
+          >
             Tải bản sao lưu
           </button>
           <button className="btn" onClick={() => fileRef.current?.click()}>
             Khôi phục từ file
           </button>
-          <button className="text-btn" onClick={async () => downloadBlob(await exportMarkdown(), `ideos-${stamp()}.md`)}>
+          <button className="btn" onClick={async () => downloadBlob(await exportMarkdown(), `ideos-${stamp()}.md`)}>
             Xuất Markdown
           </button>
           <input
@@ -151,6 +164,13 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
         </label>
         <div className="set-item">
           <div>
+            <p className="item-title">Dùng AI</p>
+            <p className="item-desc">Chép lời ghi âm, sắp xếp ý tưởng, phản biện, hỏi tiếp khi mài. Chữ gửi cho AI không được mã hoá đầu cuối (AI phải đọc được). Tắt thì app không gọi AI và không gửi gì đi.</p>
+          </div>
+          <Switch label="Dùng AI" checked={st.ai} onChange={(on) => setSettings({ ai: on })} />
+        </div>
+        <div className="set-item">
+          <div>
             <p className="item-title">Gắn vị trí khi ghi</p>
             <p className="item-desc">Để nhớ lại mình nghĩ ra ý tưởng ở đâu. Vị trí chỉ lưu trong ý tưởng.</p>
           </div>
@@ -175,19 +195,7 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
             <option value="en-US">English</option>
           </select>
         </label>
-        <label className="set-item">
-          <span>
-            <span className="item-title">Đưa vào hàng ôn lại sau</span>
-            <span className="item-desc">Ý tưởng chưa xem lại sau khoảng này sẽ được nhắc.</span>
-          </span>
-          <select value={st.reviewAfterDays} onChange={(e) => setSettings({ reviewAfterDays: +e.target.value })}>
-            {[1, 3, 7, 14, 30].map((d) => (
-              <option key={d} value={d}>
-                {d} ngày
-              </option>
-            ))}
-          </select>
-        </label>
+        
       </Row>
 
       {!standalone && (
@@ -210,23 +218,7 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
         </Row>
       )}
 
-      <Row id="help-h" title="Ghi nhanh" desc="Những cách để ghi xong một ý tưởng trong vài giây.">
-        <ul className="help">
-          <li>Dòng đầu là tiêu đề, các dòng sau là ghi chú.</li>
-          <li>
-            <code>#tag</code> gắn nhãn, ví dụ <code>#ai #giaoduc</code>.
-          </li>
-          <li>
-            <code>@web</code> <code>@app</code> <code>@startup</code> <code>@product</code> <code>@feature</code> chọn loại.
-          </li>
-          <li>
-            <kbd>N</kbd> ghi mới, <kbd>/</kbd> tìm, <kbd>Ctrl</kbd> + <kbd>Enter</kbd> lưu, <kbd>Esc</kbd> đóng.
-          </li>
-          <li>Tìm không cần gõ dấu: "y tuong" vẫn ra "ý tưởng".</li>
-          <li>Trên Android: chia sẻ link hoặc đoạn chữ từ app khác vào Ideos để lưu thành ý tưởng.</li>
-          <li>Ghi âm dùng được khi offline. Nói thành chữ thường cần mạng.</li>
-        </ul>
-      </Row>
+      
 
       <Row id="danger-h" title="Xoá dữ liệu" desc={signedIn ? 'Xoá toàn bộ ý tưởng trên máy này và trên mọi máy đang đồng bộ.' : 'Xoá toàn bộ ý tưởng trên máy này.'}>
         <p className="panel-note">Không thể hoàn tác, trừ khi bạn đã tải bản sao lưu.</p>

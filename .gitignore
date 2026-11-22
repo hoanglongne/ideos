@@ -7,3 +7,7 @@ dev-dist
 .wrangler
 .dev.vars
 *.tsbuildinfo
+
+.e2e-state
+playwright-report
+test-results

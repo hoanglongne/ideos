@@ -16,6 +16,12 @@ function remaining(a: AiAvailability) {
 /** Lý do chưa dùng được AI, nói đúng việc người dùng cần làm. */
 function Unavailable({ avail }: { avail: AiAvailability }) {
   if (avail.state === 'loading') return <p className="panel-note">Đang kiểm tra AI…</p>
+  if (avail.state === 'disabled')
+    return (
+      <p className="panel-note">
+        AI đang tắt. Không có chữ nào của bạn được gửi đi. Bật lại ở <a href="#/settings">Cài đặt</a>.
+      </p>
+    )
   if (avail.state === 'unpaired')
     return (
       <p className="panel-note">

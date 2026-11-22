@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": [
+      "node",
+      "@cloudflare/workers-types"
+    ]
+  },
+  "include": [
+    "e2e",
+    "playwright.config.ts",
+    "worker/testing",
+    "worker/d1-load.test.ts"
+  ]
+}

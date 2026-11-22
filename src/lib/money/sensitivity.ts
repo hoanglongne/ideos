@@ -2,7 +2,7 @@
 // Kết quả đổi thẳng thành giả định có mức rủi ro: đây là cái cần kiểm chứng trước.
 
 import { money, moneyShort, num } from './format'
-import { MODELS, type InputKey, type PlanInputs, type PlanMode } from './models'
+import { MODELS, mainKeys, type InputKey, type PlanInputs, type PlanMode } from './models'
 import { simulate, summarize, type PlanSummary } from './plan'
 
 /** Mức làm xấu mỗi con số khi thử */
@@ -71,6 +71,14 @@ const DRIVERS: Driver[] = [
     test: 'Chạy thử một kênh nhỏ (vài trăm nghìn) và đếm số người thực sự trả tiền, không đếm lượt bấm.',
   },
   {
+    key: 'organic_new',
+    label: 'Khách tự đến mỗi tháng',
+    dir: -1,
+    modes: ALL,
+    claim: (i) => `Mỗi tháng có khoảng ${num(i.organic_new, 1)} ${MODELS[i.model].customer} tự đến (giới thiệu, tìm kiếm), không tốn quảng cáo`,
+    test: 'Đếm số khách mới không đến từ quảng cáo trong 4 tuần đầu, và hỏi từng người biết đến bạn từ đâu.',
+  },
+  {
     key: 'var_cost_pct',
     label: 'Chi phí biến đổi',
     dir: 1,
@@ -135,9 +143,33 @@ export function sensitivities(i: PlanInputs, assumed: readonly InputKey[] = []):
 
 const goalFixed = (i: PlanInputs) => i.fixed_cost + (i.goal_type === 'salary' ? i.goal_amount : 0)
 
-/** Tóm tắt một câu bằng tiếng người: kế hoạch này nói gì. */
-export function verdict(i: PlanInputs, s: PlanSummary): { tone: 'negative' | 'neutral' | 'positive'; text: string } {
+const LABEL: Partial<Record<InputKey, string>> = { price: 'giá', churn_pct: 'tỉ lệ khách rời đi', repeat_pct: 'tỉ lệ mua lại', cac: 'chi phí kéo khách', fixed_cost: 'chi phí cố định' }
+
+export interface Verdict {
+  tone: 'negative' | 'neutral' | 'positive'
+  text: string
+  /** Các con số chính vẫn là số trung bình của mô hình, chưa phải của người dùng */
+  estimates: string[]
+}
+
+/**
+ * Tóm tắt một câu bằng tiếng người: kế hoạch này nói gì.
+ * Còn số chính chưa tự nhập thì không bao giờ báo xanh, và nói rõ đó mới là số trung bình.
+ */
+export function verdict(i: PlanInputs, s: PlanSummary, assumed: readonly InputKey[] = []): Verdict {
+  const keys = mainKeys(MODELS[i.model].planMode)
+  const est = keys.filter((k) => assumed.includes(k))
+  const estimates = est.map((k) => LABEL[k] ?? k)
+  const v = core(i, s)
+  if (!est.length) return { ...v, estimates }
+  const note = est.length === keys.length ? 'Mới dùng số trung bình của mô hình, chưa phải số của bạn.' : `Còn ${est.length} số chính là ước lượng (${estimates.join(', ')}).`
+  return { tone: v.tone === 'positive' ? 'neutral' : v.tone, text: `${v.text} ${note}`, estimates }
+}
+
+function core(i: PlanInputs, s: PlanSummary): { tone: 'negative' | 'neutral' | 'positive'; text: string } {
   const c = MODELS[i.model].customer
+  const noSource = (i.cac <= 0 || i.marketing_budget <= 0) && i.organic_new <= 0 && i.start_customers <= 0
+  if (noSource) return { tone: 'neutral', text: 'Chưa có nguồn khách nào: nhập chi phí kéo khách và ngân sách marketing, hoặc số khách tự đến mỗi tháng.' }
   if (s.unit.contribution <= 0) return { tone: 'negative', text: 'Mỗi khách đang lỗ ngay trước khi tính marketing: giá chưa đủ trả chi phí biến đổi, phí và thuế.' }
   if (s.ltvCac.value != null && s.ltvCac.value < 1) return { tone: 'negative', text: `Một ${c} chưa mang về đủ tiền để bù chi phí kéo họ về (${num(s.ltvCac.value, 1)}×). Càng chạy quảng cáo càng lỗ.` }
   if (s.breakEvenMonth == null)

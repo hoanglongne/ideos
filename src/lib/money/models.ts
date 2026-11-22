@@ -300,5 +300,10 @@ export function fieldsFor(mode: PlanMode): InputKey[] {
   if (mode === 'audience') core.push('orders_per_month', 'churn_pct')
   if (mode === 'transaction') core.push('orders_per_month', 'repeat_pct')
   if (mode === 'marketplace') core.push('orders_per_month', 'repeat_pct', 'take_rate_pct')
-  return [...core, 'var_cost_pct', 'cac', 'marketing_budget', 'fixed_cost', 'start_cash']
+  return [...core, 'var_cost_pct', 'cac', 'marketing_budget', 'organic_new', 'fixed_cost', 'start_cash']
+}
+
+/** Các ô quyết định kết luận: chưa tự nhập mấy ô này thì kết luận chưa đáng tin. */
+export function mainKeys(mode: PlanMode): InputKey[] {
+  return ['price', mode === 'transaction' || mode === 'marketplace' ? 'repeat_pct' : 'churn_pct', 'cac', 'fixed_cost']
 }

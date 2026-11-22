@@ -1,5 +1,6 @@
 import type { IdeosDB } from '../db'
 import { mergeIdeas, normalizeIdea, stripSync } from '../db'
+import { mergeThreeWay, sameContent } from './merge'
 import type { Attachment, AttachmentType, Idea } from '../types'
 
 /* Hàng dữ liệu phía server. `seq` do server gán, tăng theo thứ tự commit, dùng làm con trỏ kéo về. */
@@ -73,7 +74,6 @@ const toRemoteAtt = (a: Attachment): Push<RemoteAttachment> => ({
   deleted: false,
 })
 
-const listSize = (i: Idea) => i.journal.length + i.assumptions.length + i.evidence.length + i.tasks.length + i.related.length
 
 /** Một vòng đồng bộ đầy đủ: kéo thay đổi từ server (gộp với thay đổi trên máy), rồi đẩy thay đổi cục bộ lên. */
 export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncResult> {
@@ -82,7 +82,8 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
 
   // Đổi kho (máy mới ghép, hoặc chuyển sang mã khác) → gộp toàn bộ dữ liệu trên máy vào kho đó
   if ((await getMeta<string>(db, META.scope)) !== remote.scope) {
-    await db.transaction('rw', [db.ideas, db.attachments, db.meta], async () => {
+    await db.transaction('rw', [db.ideas, db.attachments, db.meta, db.bases], async () => {
+      await db.bases.clear() // bản "đã đồng bộ" của kho cũ không còn là tổ tiên chung của kho mới
       await db.meta.bulkDelete([META.ideas, META.atts])
       await db.ideas.toCollection().modify({ dirty: 1 })
       await db.attachments.toCollection().modify({ dirty: 1 })
@@ -95,7 +96,7 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
   const ideaCursor = (await getMeta<number>(db, META.ideas)) ?? 0
   const ideaRows = await remote.pullIdeas(ideaCursor)
   if (ideaRows.length) {
-    await db.transaction('rw', [db.ideas, db.tombstones, db.meta], async () => {
+    await db.transaction('rw', [db.ideas, db.tombstones, db.meta, db.bases], async () => {
       let cursor = ideaCursor
       for (const row of ideaRows) {
         cursor = Math.max(cursor, row.seq)
@@ -103,6 +104,7 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
         if (row.deleted || !row.data) {
           if (local && local.updatedAt <= row.updatedAt) {
             await db.ideas.delete(row.id)
+            await db.bases.delete(row.id)
             pulled++
           }
           continue
@@ -111,20 +113,31 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
         if (t && t.deletedAt >= row.updatedAt) continue
         const incoming = normalizeIdea({ ...row.data, updatedAt: row.updatedAt })
         if (local?.dirty === 1) {
-          // Cả máy này và máy khác cùng sửa khi chưa đồng bộ: gộp danh sách theo id,
-          // trường đơn lẻ theo bản mới hơn. Nếu bản gộp có thêm gì từ máy này thì giữ "dirty" để đẩy lên.
-          const remoteNewer = row.updatedAt > local.updatedAt
-          const merged = remoteNewer ? mergeIdeas(incoming, stripSync(local)) : mergeIdeas(stripSync(local), incoming)
-          const base = remoteNewer ? incoming : stripSync(local)
-          if (listSize(merged) > listSize(base)) {
-            await db.ideas.put({ ...merged, updatedAt: Math.max(Date.now(), row.updatedAt + 1, local.updatedAt), dirty: 1 })
-            pulled++
-          } else if (remoteNewer) {
-            await db.ideas.put({ ...incoming, dirty: 0, _remote: true })
+          // Cả máy này và máy khác cùng sửa khi chưa đồng bộ. Có bản đã đồng bộ lần trước thì gộp ba chiều theo từng trường;
+          // chưa có (dữ liệu cũ, máy mới ghép) thì dùng cách gộp cũ: danh sách theo id, trường đơn lẻ theo bản mới hơn.
+          const mine = stripSync(local)
+          const base = (await db.bases.get(row.id))?.idea
+          if (base && sameContent(normalizeIdea(base), incoming)) {
+            // máy chủ chưa đổi gì kể từ lần đồng bộ trước: chỉ máy này có thay đổi, cứ để nguyên (giữ giờ sửa thật) rồi đẩy lên
+          } else {
+            const merged = base
+              ? mergeThreeWay(normalizeIdea(base), mine, incoming)
+              : row.updatedAt > local.updatedAt
+                ? mergeIdeas(incoming, mine)
+                : mergeIdeas(mine, incoming)
+            if (sameContent(merged, incoming)) {
+              // bản trên máy chủ đã chứa mọi thứ của máy này
+              await db.ideas.put({ ...incoming, dirty: 0, _remote: true })
+            } else {
+              // bản gộp là một thay đổi mới của máy này; updatedAt phải lớn hơn bản trên máy chủ để thắng khi đẩy
+              await db.ideas.put({ ...merged, updatedAt: Math.max(Date.now(), row.updatedAt + 1, local.updatedAt), dirty: 1 })
+            }
+            await db.bases.put({ id: row.id, idea: incoming })
             pulled++
           }
         } else if (!local || row.updatedAt > local.updatedAt) {
           await db.ideas.put({ ...incoming, dirty: 0, _remote: true })
+          await db.bases.put({ id: row.id, idea: incoming })
           pulled++
         }
       }
@@ -181,13 +194,18 @@ export async function syncOnce(db: IdeosDB, remote: SyncRemote): Promise<SyncRes
   for (const group of chunk(dirtyIdeas)) {
     await remote.pushIdeas(group.map((i) => ({ id: i.id, data: stripSync(i), updatedAt: i.updatedAt, deleted: false })))
     const sent = new Map(group.map((i) => [i.id, i.updatedAt]))
-    // chỉ tắt cờ nếu không bị sửa tiếp trong lúc đang đẩy
+    // chỉ tắt cờ nếu không bị sửa tiếp trong lúc đang đẩy; bản vừa đẩy trở thành "đã đồng bộ lần trước"
+    const confirmed = new Set<string>()
     await db.ideas
       .where('id')
       .anyOf([...sent.keys()])
       .modify((i) => {
-        if (sent.get(i.id) === i.updatedAt) (i as { _remote?: true })._remote = true
+        if (sent.get(i.id) === i.updatedAt) {
+          ;(i as { _remote?: true })._remote = true
+          confirmed.add(i.id)
+        }
       })
+    await db.bases.bulkPut(group.filter((i) => confirmed.has(i.id)).map((i) => ({ id: i.id, idea: stripSync(i) })))
     pushed += group.length
   }
 

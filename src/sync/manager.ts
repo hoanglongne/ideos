@@ -118,6 +118,8 @@ async function runSync() {
       /* bỏ qua */
     }
     set({ status: 'idle', lastSyncAt: now })
+    // số vòng đồng bộ đã xong, để kiểm thử tự động chờ đúng một vòng thay vì đoán theo chữ trên màn hình
+    document.documentElement.dataset.syncs = String(Number(document.documentElement.dataset.syncs ?? 0) + 1)
   } catch (e) {
     failures++
     set({ status: navigator.onLine ? 'error' : 'offline', error: errorText(e) })
@@ -189,10 +191,10 @@ async function probe() {
 /* ---------- thao tác từ giao diện ---------- */
 
 /** Bật đồng bộ lần đầu: tạo mã mới cho kho dữ liệu của bạn. */
-export async function startNewVault() {
+export async function startNewVault(adminKey?: string) {
   const secret = newSecret()
   const k = await deriveKeys(secret)
-  await createVault(k)
+  await createVault(k, adminKey)
   writeSecret(secret)
   await use(secret)
   requestSync(0)

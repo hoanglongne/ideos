@@ -1,59 +1,42 @@
-import { useLiveQuery } from 'dexie-react-hooks'
-import { BarChart3, Lightbulb, Plus, RotateCcw, Settings as SettingsIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { ArrowLeft, Settings as SettingsIcon } from 'lucide-react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
-import { CaptureSheet } from './components/CaptureSheet'
-import { Coach } from './components/Coach'
-import { IdeaDetail } from './components/IdeaDetail'
-import { IdeaList } from './components/IdeaList'
+import { BackupNudge } from './components/BackupNudge'
+import { Home } from './components/Home'
+import { IdeaPage } from './components/IdeaPage'
 import { Mark } from './components/Mark'
-import { Review } from './components/Review'
-import { Settings, type InstallPromptEvent } from './components/Settings'
-import { Stats } from './components/Stats'
+import type { InstallPromptEvent } from './components/Settings'
 import { SyncStatus, takePairLink } from './components/SyncPanel'
-import { db } from './db'
-import { go, useRoute, type Route } from './lib/router'
+import { go, useRoute } from './lib/router'
 import { useSettings } from './lib/settings'
-import { REVIEWABLE } from './types'
 import { initSync } from './sync/manager'
 import { IS_DEMO, exitDemo } from './lib/demo'
 
 /** Đọc ?new=1 hoặc dữ liệu từ Web Share Target rồi dọn URL. */
-function takeLaunchParams(): { open: boolean; text?: string } {
+function takeLaunchParams(): { focus: boolean; text?: string } {
   const p = new URLSearchParams(location.search)
   const shared = [p.get('share_title'), p.get('share_text'), p.get('share_url')].filter(Boolean)
-  const open = p.has('new') || shared.length > 0
+  const focus = p.has('new') || shared.length > 0
   if (location.search) history.replaceState(null, '', location.pathname + location.hash)
-  return { open, text: shared.length ? [...new Set(shared)].join('\n') : undefined }
+  return { focus, text: shared.length ? [...new Set(shared)].join('\n') : undefined }
 }
+
+// Màn ít dùng tải khi cần. Service worker đã lưu sẵn nên offline vẫn mở được.
+const Coach = lazy(() => import('./components/Coach').then((m) => ({ default: m.Coach })))
+const Settings = lazy(() => import('./components/Settings').then((m) => ({ default: m.Settings })))
 
 const LAUNCH = takeLaunchParams()
 // mở bằng link ghép máy → vào thẳng Cài đặt với mã đã điền sẵn
 takePairLink()
 
-const NAV: { route: Route['name']; href: string; label: string; short: string; Icon: typeof Lightbulb }[] = [
-  { route: 'list', href: '#/', label: 'Ý tưởng', short: 'Ý tưởng', Icon: Lightbulb },
-  { route: 'review', href: '#/review', label: 'Ôn lại', short: 'Ôn lại', Icon: RotateCcw },
-  { route: 'stats', href: '#/stats', label: 'Thống kê', short: 'Thống kê', Icon: BarChart3 },
-]
-
 export default function App() {
   const route = useRoute()
-  const { theme, reviewAfterDays } = useSettings()
-  const [capture, setCapture] = useState<{ text?: string } | null>(LAUNCH.open ? { text: LAUNCH.text } : null)
-  const [query, setQuery] = useState('')
+  const { theme } = useSettings()
   const [installEvent, setInstallEvent] = useState<InstallPromptEvent | null>(null)
-  const searchRef = useRef<HTMLInputElement>(null)
-
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
   } = useRegisterSW()
-
-  const dueCount = useLiveQuery(async () => {
-    const cutoff = Date.now() - reviewAfterDays * 86400_000
-    return db.ideas.filter((i) => REVIEWABLE.includes(i.status) && (i.reviewedAt ?? i.createdAt) < cutoff).count()
-  }, [reviewAfterDays])
 
   useEffect(() => {
     const root = document.documentElement
@@ -73,64 +56,49 @@ export default function App() {
     return () => window.removeEventListener('beforeinstallprompt', onPrompt)
   }, [])
 
+  // N: ghi ý tưởng mới (kéo về trang chủ rồi vào ô ghi); /: tìm
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
       if (t.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return
-      if (e.key === 'n' || e.key === 'N') {
+      if (e.key === 'n' || e.key === 'N' || e.key === '/') {
         e.preventDefault()
-        setCapture({})
-      } else if (e.key === '/') {
-        e.preventDefault()
-        if (route.name !== 'list') go('/')
-        setTimeout(() => searchRef.current?.focus(), 0)
+        if (route.name !== 'home') go('/')
+        setTimeout(() => {
+          if (e.key === '/') document.querySelector<HTMLInputElement>('.home-search input')?.focus()
+          else window.dispatchEvent(new Event('ideos:focus-composer'))
+        }, 60)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [route.name])
 
-  const active = route.name === 'idea' || route.name === 'coach' ? 'list' : route.name
-  const openCapture = () => setCapture({})
+  const home = route.name === 'home'
 
   return (
-    <div className="shell">
-      <aside className="sidebar" aria-label="Điều hướng">
-        <a className="brand" href="#/">
-          <Mark size={26} />
-          <span>Ideos</span>
-        </a>
-        <button className="btn primary wide" onClick={openCapture}>
-          <Plus size={16} strokeWidth={2} aria-hidden /> Ghi ý tưởng
-          <kbd className="kbd-hint">N</kbd>
-        </button>
-        <nav className="nav">
-          {NAV.map(({ route: r, href, label, Icon }) => (
-            <a key={r} href={href} className={'nav-item' + (active === r ? ' on' : '')} aria-current={active === r ? 'page' : undefined}>
-              <Icon size={16} strokeWidth={1.6} aria-hidden />
-              <span>{label}</span>
-              {r === 'review' && !!dueCount && <span className="nav-count num">{dueCount}</span>}
-            </a>
-          ))}
-        </nav>
-        <div className="sidebar-foot">
-          <a href="#/settings" className={'nav-item' + (active === 'settings' ? ' on' : '')} aria-current={active === 'settings' ? 'page' : undefined}>
-            <SettingsIcon size={16} strokeWidth={1.6} aria-hidden />
-            <span>Cài đặt</span>
+    <div className="app">
+      <header className="bar">
+        {home ? (
+          <a className="brand" href="#/">
+            <Mark size={24} />
+            <span>Ideos</span>
           </a>
-          <SyncStatus />
-        </div>
-      </aside>
-
-      <header className="phonebar">
-        <a className="brand" href="#/">
-          <Mark size={22} />
-          <span>Ideos</span>
-        </a>
+        ) : (
+          <button className="btn ghost bar-back" onClick={() => go(route.name === 'coach' ? '/idea/' + route.id : '/')}>
+            <ArrowLeft size={20} strokeWidth={2} aria-hidden /> {route.name === 'coach' ? 'Ý tưởng' : 'Ideos'}
+          </button>
+        )}
+        <div className="push" />
         <SyncStatus compact />
+        {route.name !== 'settings' && (
+          <a className="icon-btn" href="#/settings" aria-label="Cài đặt" title="Cài đặt">
+            <SettingsIcon size={22} strokeWidth={1.8} />
+          </a>
+        )}
       </header>
 
-      <main className="page">
+      <main>
         {IS_DEMO && (
           <div className="notice">
             <span>Bạn đang xem dữ liệu mẫu. Những gì ghi ở đây không lẫn vào dữ liệu thật.</span>
@@ -147,34 +115,14 @@ export default function App() {
             </button>
           </div>
         )}
-        {route.name === 'list' && <IdeaList query={query} onQuery={setQuery} searchRef={searchRef} onNew={openCapture} dueCount={dueCount ?? 0} />}
-        {route.name === 'idea' && <IdeaDetail id={route.id} />}
-        {route.name === 'coach' && <Coach id={route.id} />}
-        {route.name === 'review' && <Review />}
-        {route.name === 'stats' && <Stats />}
-        {route.name === 'settings' && <Settings installEvent={installEvent} onInstalled={() => setInstallEvent(null)} />}
+        {!IS_DEMO && <BackupNudge />}
+        <Suspense fallback={<div className="route-loading" role="status" aria-label="Đang tải" />}>
+          {route.name === 'home' && <Home initialText={LAUNCH.text} focusComposer={LAUNCH.focus} />}
+          {route.name === 'idea' && <IdeaPage key={route.id} id={route.id} />}
+          {route.name === 'coach' && <Coach id={route.id} />}
+          {route.name === 'settings' && <Settings installEvent={installEvent} onInstalled={() => setInstallEvent(null)} />}
+        </Suspense>
       </main>
-
-      <nav className="tabbar" aria-label="Điều hướng">
-        {NAV.slice(0, 2).map(({ route: r, href, short, Icon }) => (
-          <a key={r} href={href} className={active === r ? 'on' : ''} aria-current={active === r ? 'page' : undefined}>
-            <Icon size={20} strokeWidth={1.6} aria-hidden />
-            <span>{short}</span>
-            {r === 'review' && !!dueCount && <i className="tab-count num">{dueCount > 99 ? '99+' : dueCount}</i>}
-          </a>
-        ))}
-        <button className="tab-capture" onClick={openCapture} aria-label="Ghi ý tưởng mới">
-          <Plus size={24} strokeWidth={2} aria-hidden />
-        </button>
-        {[NAV[2], { route: 'settings' as const, href: '#/settings', short: 'Cài đặt', Icon: SettingsIcon }].map(({ route: r, href, short, Icon }) => (
-          <a key={r} href={href} className={active === r ? 'on' : ''} aria-current={active === r ? 'page' : undefined}>
-            <Icon size={20} strokeWidth={1.6} aria-hidden />
-            <span>{short}</span>
-          </a>
-        ))}
-      </nav>
-
-      {capture && <CaptureSheet initialText={capture.text} onClose={() => setCapture(null)} />}
     </div>
   )
 }
