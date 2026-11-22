@@ -265,7 +265,7 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
   )
 
   const maxLoss = Math.max(1, ...sens.map((r) => r.loss))
-  const top = sens.slice(0, 5)
+  const top = sens.slice(0, 3)
 
   return (
     <div className="money">
@@ -313,7 +313,8 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
 
       <CashChart rows={rows} start={i.start_cash} cur={i.currency} />
 
-      <h3 className="money-h">Các con số</h3>
+      <details className="money-sub money-edit" open>
+        <summary className="money-h">Sửa các con số</summary>
       <div className="money-fields">
         {fieldsFor(t.planMode).map((k) => (
           <NumField key={k} k={k} plan={plan} onChange={edit} />
@@ -349,6 +350,8 @@ export function MoneyPanel({ idea }: { idea: Idea }) {
             <NumField key={k} k={k} plan={plan} onChange={edit} />
           ))}
         </div>
+      </details>
+
       </details>
 
       <details className="money-sub" open>

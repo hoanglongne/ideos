@@ -65,10 +65,9 @@ test('chi phí kéo khách bằng 0: nói thiếu nguồn khách, có khách t�
 
 test('con số rủi ro nhất thành giả định, và xuất sang Sổ Cái', async ({ page }) => {
   const id = await openMoney(page)
-  await setFold(page, 'assumptions', true)
-  await page.evaluate(() => ((document.querySelector('.money-sub') as HTMLDetailsElement).open = true))
+    await page.evaluate(() => ((document.querySelector('.money-sub:not(.money-edit)') as HTMLDetailsElement).open = true))
   await page.click('button:has-text("Thêm 3 con số rủi ro nhất")')
-  await expect(page.locator('.assumption')).toHaveCount(3)
+  await expect(page.locator('.q')).toHaveCount(3)
   await page.locator('summary[aria-label="Thêm tuỳ chọn"]').click()
   await page.getByRole('combobox', { name: 'Giai đoạn' }).selectOption('building')
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('text=Tải file cho Sổ Cái')])

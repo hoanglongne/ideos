@@ -1,5 +1,4 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowLeft } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { db, updateIdea } from '../db'
 import { followupQuestion, isFollowup, NEXT_STEP, nextQuestion, sessionLength, shouldFollowUp, type Question } from '../lib/coach'
@@ -97,19 +96,16 @@ export function Coach({ id }: { id: string }) {
 
   return (
     <div className="coach">
-      <div className="coach-bar">
-        <a className="btn ghost" href={`#/idea/${id}`}>
-          <ArrowLeft size={16} strokeWidth={1.8} aria-hidden /> {finished ? 'Về ý tưởng' : 'Thoát'}
-        </a>
-        {!finished && total !== null && (
+      {!finished && total !== null && (
+        <div className="coach-bar">
           <span className="coach-progress num" aria-label={`Câu ${step} trên khoảng ${Math.max(total, step)}`}>
             Câu {step} trên {Math.max(total, step)}
             <span className="progress-track" aria-hidden="true">
               <span style={{ width: `${(step / Math.max(total, step)) * 100}%` }} />
             </span>
           </span>
-        )}
-      </div>
+        </div>
+      )}
       <h1 className="coach-idea">{idea.title}</h1>
 
       <div className="coach-grid">
@@ -143,29 +139,20 @@ export function Coach({ id }: { id: string }) {
           />
         )
       )}
-        {!finished && (
-          <aside className="panel coach-side" aria-labelledby="session-h">
-            <div className="panel-head">
-              <h2 id="session-h">Phiên này</h2>
-              {done.length > 0 && <span className="muted num">{done.length} câu trả lời</span>}
-            </div>
-            {done.length ? (
-              <dl className="coach-log">
-                {done.map((d) => (
-                  <div key={d.q.id}>
-                    <dt>{shortLabel(d.q)}</dt>
-                    <dd>{d.summary}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <p className="panel-note">Mỗi câu trả lời tự vào đúng chỗ của nó trong ý tưởng: canvas, giả định, bằng chứng hay bước tiếp theo. Cả phiên được ghi vào nhật ký khi xong.</p>
-            )}
-            <p className="panel-note coach-state">
-              Ý tưởng hiện có <span className="num">{CANVAS_FIELDS.filter((f) => idea.canvas[f.key].trim()).length}/6</span> ô canvas, <span className="num">{idea.assumptions.length}</span> giả định,{' '}
-              <span className="num">{idea.evidence.length}</span> bằng chứng.
-            </p>
-          </aside>
+        {!finished && done.length > 0 && (
+          <section className="coach-done" aria-labelledby="session-h">
+            <h2 id="session-h" className="eyebrow">
+              Bạn đã trả lời
+            </h2>
+            <dl className="coach-log">
+              {done.map((d) => (
+                <div key={d.q.id}>
+                  <dt>{shortLabel(d.q)}</dt>
+                  <dd>{d.summary}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
         )}
       </div>
     </div>

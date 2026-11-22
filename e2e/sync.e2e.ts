@@ -15,13 +15,13 @@ test('hai máy: ghép bằng mã, sửa lệch nhau thì gộp lại, xoá thì 
   await B.click('button:has-text("Ghép máy này")')
   await expect(B.locator('.toast')).toContainText(/không đúng|không có|chưa/i)
   await joinSync(B, code.toLowerCase().replace(/-/g, ' '))
-  await B.goto('/#/ideas')
-  await expect(B.locator('.ideas .row-title')).toHaveText(['Cho thuê đồ cắm trại cuối tuần'])
+  await B.goto('/#/')
+  await expect(B.locator('.item-title')).toHaveText(['Cho thuê đồ cắm trại cuối tuần'])
 
   // A mất mạng và đổi tên; B ghi thêm nhật ký cùng lúc
-  await A.goto('/#/ideas')
-  await A.locator('.ideas .row').click()
-  await B.locator('.ideas .row').click()
+  await A.goto('/#/')
+  await A.locator('.item').click()
+  await B.locator('.item').click()
   await A.waitForSelector('.idea')
   await B.waitForSelector('.idea')
   await setFold(A, 'journal', true)
@@ -39,8 +39,8 @@ test('hai máy: ghép bằng mã, sửa lệch nhau thì gộp lại, xoá thì 
 
   // cả hai máy đều có cả tên mới lẫn dòng nhật ký: không bên nào đè mất bên nào
   for (const page of [A, B]) {
-    await page.goto('/#/ideas')
-    await page.locator('.ideas .row').click()
+    await page.goto('/#/')
+    await page.locator('.item').click()
     await page.waitForSelector('.idea')
     await setFold(page, 'journal', true)
     await expect(page.locator('.idea-title textarea')).toHaveValue('Cho thuê đồ cắm trại (tên mới trên A)')
@@ -51,12 +51,12 @@ test('hai máy: ghép bằng mã, sửa lệch nhau thì gộp lại, xoá thì 
   await A.locator('summary[aria-label="Thêm tuỳ chọn"]').click()
   await A.getByRole('button', { name: 'Xoá ý tưởng này' }).click()
   await expect(A).toHaveURL(/#\/$/) // xoá xong app tự về danh sách
-  await A.goto('/#/ideas')
-  await expect(A.locator('.ideas .row')).toHaveCount(0)
+  await A.goto('/#/')
+  await expect(A.locator('.item')).toHaveCount(0)
   await syncNow(A)
   await syncNow(B)
-  await B.goto('/#/ideas')
-  await expect(B.locator('.ideas .row')).toHaveCount(0)
+  await B.goto('/#/')
+  await expect(B.locator('.item')).toHaveCount(0)
 })
 
 test('máy kia tự nhận thay đổi mà không cần bấm gì', async ({ browser }) => {
@@ -67,9 +67,9 @@ test('máy kia tự nhận thay đổi mà không cần bấm gì', async ({ bro
   const code = await enableSync(A)
   const B = await (await browser.newContext()).newPage()
   await joinSync(B, code)
-  await B.goto('/#/ideas')
-  await expect(B.locator('.ideas .row')).toHaveCount(1)
+  await B.goto('/#/')
+  await expect(B.locator('.item')).toHaveCount(1)
   await capture(A, 'Thêm một ý tưởng trên A')
   // B hỏi máy chủ định kỳ (20 giây một lần) nên sẽ tự thấy
-  await expect(B.locator('.ideas .row')).toHaveCount(2, { timeout: 60_000 })
+  await expect(B.locator('.item')).toHaveCount(2, { timeout: 60_000 })
 })

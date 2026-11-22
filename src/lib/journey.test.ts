@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { newIdea } from '../db'
 import type { Assumption, Idea } from '../types'
 import { newMoneyPlan } from './money/models'
-import { nextStep, stageIndex, stepLabel, todayPlan } from './journey'
+import { nextStep, stepLabel, todayPlan } from './journey'
 
 const as = (id: string, over: Partial<Assumption> = {}): Assumption => ({ id, text: 'giả định ' + id, risk: 2, test: '', status: 'untested', createdAt: 1, ...over })
 const idea = (over: Partial<Idea> = {}): Idea => newIdea({ title: 'x', ...over })
@@ -67,13 +67,31 @@ describe('todayPlan', () => {
   })
 })
 
-describe('thanh hành trình', () => {
-  it('chỉ số chặng; gác lại nằm ngoài', () => {
-    expect(stageIndex('spark')).toBe(0)
-    expect(stageIndex('shipped')).toBe(4)
-    expect(stageIndex('parked')).toBe(-1)
+describe('ý tưởng lâu không động tới', () => {
+  const DAY = 86_400_000
+  const now = 1_800_000_000_000
+  it('quá 14 ngày thì hỏi lại trước mọi bước khác', () => {
+    const stale = idea({ status: 'validating', canvas: filled, assumptions: [as('a')], updatedAt: now - 20 * DAY })
+    const s = nextStep(stale, now)
+    expect(s.kind).toBe('revisit')
+    expect(s.why).toMatch(/20 ngày/)
+  })
+  it('mới xem lại (reviewedAt) thì không hỏi nữa', () => {
+    const seen = idea({ status: 'exploring', updatedAt: now - 20 * DAY, reviewedAt: now - 1 * DAY })
+    expect(nextStep(seen, now).kind).toBe('coach')
+  })
+  it('ý tưởng để sau hay đã ra mắt không bị hỏi lại', () => {
+    expect(nextStep(idea({ status: 'parked', updatedAt: now - 90 * DAY }), now).kind).toBe('resume')
+    expect(nextStep(idea({ status: 'shipped', updatedAt: now - 90 * DAY }), now).kind).toBe('track')
+  })
+  it('xếp sau việc thử giả định rủi ro cao, trước việc mài', () => {
+    const risky = idea({ title: 'rủi ro', status: 'validating', canvas: filled, assumptions: [as('x', { risk: 3 })], updatedAt: now })
+    const stale = idea({ title: 'cũ', status: 'exploring', updatedAt: now - 30 * DAY })
+    const fresh = idea({ title: 'mới', updatedAt: now })
+    expect(todayPlan([fresh, stale, risky], 5, now).map((p) => p.idea.title)).toEqual(['rủi ro', 'cũ', 'mới'])
   })
   it('nhãn một dòng', () => {
     expect(stepLabel({ kind: 'test', title: 'khách trả tiền', why: '', cta: '', section: null })).toBe('Thử: khách trả tiền')
+    expect(stepLabel({ kind: 'revisit', title: 'x', why: '', cta: '', section: null })).toBe('Còn muốn làm không?')
   })
 })

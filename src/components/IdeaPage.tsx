@@ -1,24 +1,21 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowLeft, MapPin } from 'lucide-react'
+import { MapPin } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { db, deleteIdea, newIdea, removeAttachment, restoreIdea, updateIdea } from '../db'
 import { ideaToMarkdown } from '../lib/backup'
 import { nextStep } from '../lib/journey'
 import { summarize } from '../lib/money/plan'
-import { suggestConfidence } from '../lib/insight'
-import { back, go } from '../lib/router'
+import { go } from '../lib/router'
 import { timeAgo, uid } from '../lib/util'
 import { CANVAS_FIELDS, STATUSES, type Idea } from '../types'
-import { AiCritiquePanel, isRawIdea, useTranscribe } from './AiPanel'
+import { isRawIdea, useTranscribe } from './AiPanel'
 import { AttachmentList } from './Attachments'
-import { Assumptions, EvidenceList } from './Assumptions'
 import { EditableText } from './Editable'
-import { Fold, openSection } from './Fold'
-import { IceScorer, Links, Related, TagEditor, Tasks } from './IdeaParts'
 import { IdeaMenu } from './IdeaMenu'
 import { Journal } from './Journal'
-import { NextStepCard } from './NextStepCard'
-import { StageRail } from './StageRail'
+import { Now } from './Now'
+import { Questions } from './Questions'
+import { Tasks } from './Tasks'
 import { useToast } from './Toast'
 
 const MoneyPanel = lazy(() => import('./MoneyPanel').then((m) => ({ default: m.MoneyPanel })))
@@ -32,7 +29,11 @@ function moneyMeta(m: NonNullable<Idea['money']>) {
 /** Hook phải gọi trước khi biết ý tưởng có tồn tại hay không. */
 const PLACEHOLDER = newIdea({ id: '' })
 
-export function IdeaDetail({ id }: { id: string }) {
+/**
+ * Một ý tưởng: tên, việc phải làm BÂY GIỜ, điều phải đúng, rồi ghi chú / tiền / việc cần làm xếp gọn bên dưới.
+ * Canvas, điểm ICE, nhãn, liên kết, ý tưởng liên quan không còn hiện ra (dữ liệu vẫn giữ nguyên).
+ */
+export function IdeaPage({ id }: { id: string }) {
   const idea = useLiveQuery(() => db.ideas.get(id), [id], null)
   const atts = useLiveQuery(() => db.attachments.where('ideaId').equals(id).sortBy('createdAt'), [id], [])
   const toast = useToast()
@@ -44,9 +45,11 @@ export function IdeaDetail({ id }: { id: string }) {
       <div className="idea">
         <h1 className="idea-title">Không tìm thấy ý tưởng này</h1>
         <p className="muted">Có thể nó đã bị xoá trên máy khác.</p>
-        <button className="btn" onClick={() => go('/')}>
-          Về trang chủ
-        </button>
+        <p style={{ marginTop: 16 }}>
+          <button className="btn" onClick={() => go('/')}>
+            Về trang chủ
+          </button>
+        </p>
       </div>
     )
 
@@ -87,18 +90,17 @@ export function IdeaDetail({ id }: { id: string }) {
   }
 
   const step = nextStep(idea)
-  const focus = (s: string) => step.section === s
-  const filled = CANVAS_FIELDS.filter((f) => idea.canvas[f.key].trim()).length
+  const stage = STATUSES.find((s) => s.value === idea.status)!.label
   const done = idea.tasks.filter((t) => t.done).length
-  const tested = idea.assumptions.filter((a) => a.status === 'holds' || a.status === 'broken').length
+  const holds = idea.assumptions.filter((a) => a.status === 'holds').length
+  const broken = idea.assumptions.filter((a) => a.status === 'broken').length
+  const summary = [`${holds} giả định đúng, ${broken} sai`, idea.money ? 'Tiền: ' + moneyMeta(idea.money) : null].filter(Boolean).join(' · ')
+  const showTasks = idea.tasks.length > 0 || idea.status === 'building' || idea.status === 'shipped'
 
   return (
     <article className="idea">
-      <div className="idea-bar">
-        <button className="btn ghost" onClick={back}>
-          <ArrowLeft size={16} strokeWidth={1.8} aria-hidden /> Quay lại
-        </button>
-        <div className="push" />
+      <div className="idea-top">
+        <p className="idea-stage">{stage}</p>
         <IdeaMenu
           idea={idea}
           onStatus={setStatus}
@@ -111,25 +113,24 @@ export function IdeaDetail({ id }: { id: string }) {
         />
       </div>
 
-      <header className="idea-head">
-        <h1 className="idea-title">
-          <EditableText value={idea.title} onSave={(title) => set({ title })} placeholder="Tiêu đề ý tưởng" multiline={false} ariaLabel="Tiêu đề" />
-        </h1>
-        <p className="idea-meta">
-          {idea.pinned && <span>Đã ghim</span>}
-          <span>Ghi {timeAgo(idea.createdAt)}</span>
-          {idea.updatedAt - idea.createdAt > 60_000 && <span>sửa {timeAgo(idea.updatedAt)}</span>}
-          {idea.location && (
+      <h1 className="idea-title">
+        <EditableText value={idea.title} onSave={(title) => set({ title })} placeholder="Tiêu đề ý tưởng" multiline={false} ariaLabel="Tiêu đề" />
+      </h1>
+      <p className="idea-meta">
+        Ghi {timeAgo(idea.createdAt)}
+        {idea.updatedAt - idea.createdAt > 60_000 && ` · sửa ${timeAgo(idea.updatedAt)}`}
+        {idea.tags.length > 0 && ' · ' + idea.tags.map((t) => '#' + t).join(' ')}
+        {idea.location && (
+          <>
+            {' · '}
             <a href={`https://www.openstreetmap.org/?mlat=${idea.location.lat}&mlon=${idea.location.lng}#map=16/${idea.location.lat}/${idea.location.lng}`} target="_blank" rel="noreferrer">
               <MapPin size={13} strokeWidth={1.8} aria-hidden /> Nơi nảy ra
             </a>
-          )}
-        </p>
-      </header>
+          </>
+        )}
+      </p>
 
-      <StageRail status={idea.status} />
-
-      <NextStepCard idea={idea} step={step} onStatus={setStatus} onOpen={openSection} />
+      <Now idea={idea} step={step} summary={summary} onStatus={setStatus} />
 
       <EditableText className="body-input" value={idea.body} onSave={(body) => set({ body })} placeholder="Mô tả ý tưởng: nó là gì, cho ai, vì sao bạn nghĩ tới…" ariaLabel="Mô tả" />
 
@@ -154,32 +155,15 @@ export function IdeaDetail({ id }: { id: string }) {
         }
       />
 
-      <div className="parts">
-        <Fold ideaId={id} id="assumptions" headingId="as-h" title="Giả định" defaultOpen={focus('assumptions')} meta={idea.assumptions.length > 0 && `${tested}/${idea.assumptions.length} đã thử`}>
-          <Assumptions idea={idea} onCoach={() => go(`/idea/${id}/coach`)} />
-          <AiCritiquePanel idea={idea} />
-        </Fold>
-
-        <Fold ideaId={id} id="evidence" headingId="ev-h" title="Bằng chứng" defaultOpen={focus('evidence')} meta={idea.evidence.length > 0 && String(idea.evidence.length)}>
-          <EvidenceList idea={idea} />
-        </Fold>
-
-        <Fold ideaId={id} id="money" headingId="money-h" title="Bài toán tiền" defaultOpen={focus('money')} meta={idea.money && moneyMeta(idea.money)}>
-          <Suspense fallback={<div className="route-loading" role="status" aria-label="Đang tải" />}>
-            <MoneyPanel idea={idea} />
-          </Suspense>
-        </Fold>
-
-        <Fold ideaId={id} id="journal" headingId="journal-h" title="Nhật ký" defaultOpen={focus('journal')} meta={idea.journal.length > 0 && `${idea.journal.length} ghi chú`}>
-          <Journal idea={idea} />
-        </Fold>
-
-        <Fold ideaId={id} id="tasks" headingId="tasks-h" title="Việc cần làm" defaultOpen={focus('tasks')} meta={idea.tasks.length > 0 && `${done}/${idea.tasks.length}`}>
-          <Tasks idea={idea} onChange={(tasks) => set({ tasks })} />
-        </Fold>
-
-        <Fold ideaId={id} id="canvas" title="Lean canvas" defaultOpen={focus('canvas')} meta={`${filled}/6 ô`}>
-          <div className="lean-canvas">
+      {CANVAS_FIELDS.some((f) => idea.canvas[f.key].trim()) && (
+        <details id="sec-canvas" className="sec sec-fold">
+          <summary>
+            <div className="sec-h">
+              <h2 id="canvas-h">Đã mài</h2>
+              <span>{CANVAS_FIELDS.filter((f) => idea.canvas[f.key].trim()).length}/{CANVAS_FIELDS.length}</span>
+            </div>
+          </summary>
+          <div className="sec-body">
             {CANVAS_FIELDS.map((f) => (
               <label key={f.key} className="field">
                 <span className="field-label">{f.label}</span>
@@ -187,19 +171,50 @@ export function IdeaDetail({ id }: { id: string }) {
               </label>
             ))}
           </div>
-        </Fold>
+        </details>
+      )}
 
-        <Fold ideaId={id} id="details" title="Điểm, nhãn và liên kết" defaultOpen={focus('details')} meta={idea.tags.length + idea.links.length + idea.related.length > 0 && `${idea.tags.length} nhãn`}>
-          <h3 className="part-h">Điểm ICE</h3>
-          <IceScorer scores={idea.scores} hint={suggestConfidence(idea)} onChange={(key, v) => updateIdea(id, { [`scores.${key}`]: v })} />
-          <h3 className="part-h">Nhãn</h3>
-          <TagEditor tags={idea.tags} onChange={(tags) => set({ tags })} />
-          <h3 className="part-h">Liên kết tham khảo</h3>
-          <Links links={idea.links} onChange={(links) => set({ links })} />
-          <h3 className="part-h">Ý tưởng liên quan</h3>
-          <Related idea={idea} />
-        </Fold>
-      </div>
+      <Questions idea={idea} onCoach={() => go(`/idea/${id}/coach`)} />
+
+      <details id="sec-money" className="sec sec-fold">
+        <summary>
+          <div className="sec-h">
+            <h2 id="money-h">Tiền</h2>
+            <span>{idea.money ? moneyMeta(idea.money) : 'chưa tính'}</span>
+          </div>
+        </summary>
+        <div className="sec-body">
+          <Suspense fallback={<div className="route-loading" role="status" aria-label="Đang tải" />}>
+            <MoneyPanel idea={idea} />
+          </Suspense>
+        </div>
+      </details>
+
+      <details id="sec-journal" className="sec sec-fold">
+        <summary>
+          <div className="sec-h">
+            <h2 id="journal-h">Ghi chú</h2>
+            <span>{idea.journal.length > 0 ? `${idea.journal.length} dòng` : 'thêm'}</span>
+          </div>
+        </summary>
+        <div className="sec-body">
+          <Journal idea={idea} />
+        </div>
+      </details>
+
+      {showTasks && (
+        <details id="sec-tasks" className="sec sec-fold">
+          <summary>
+            <div className="sec-h">
+              <h2 id="tasks-h">Việc cần làm</h2>
+              <span>{idea.tasks.length > 0 ? `${done}/${idea.tasks.length}` : 'thêm'}</span>
+            </div>
+          </summary>
+          <div className="sec-body">
+            <Tasks idea={idea} onChange={(tasks) => set({ tasks })} />
+          </div>
+        </details>
+      )}
     </article>
   )
 }

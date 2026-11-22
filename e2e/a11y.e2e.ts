@@ -20,28 +20,26 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.goto('/')
       await capture(page, 'App ghép cặp người chạy bộ #fitness @app')
       await capture(page, 'Web so sánh giá vé xe khách #travel @web')
-      await scan(page, 'hôm nay')
-      await page.goto('/#/ideas')
-      await expect(page.locator('.ideas .row')).toHaveCount(2)
-      await scan(page, 'danh sách')
-
-      await page.keyboard.press('n')
-      await page.waitForSelector('.capture-input')
-      await scan(page, 'khung ghi nhanh')
-      await page.keyboard.press('Escape')
+      await expect(page.locator('.item')).toHaveCount(2)
+      await scan(page, 'trang chủ')
 
       const id = await newIdea(page, 'Ý tưởng để quét trợ năng')
-      for (const s of ['journal', 'assumptions', 'money', 'evidence', 'tasks', 'canvas']) await setFold(page, s, true)
+      for (const s of ['journal', 'money']) await setFold(page, s, true)
+      await page.fill('input[aria-label="Thêm giả định"]', 'Người ta chịu trả tiền')
+      await page.locator('form.q-new').getByRole('button', { name: 'Thêm' }).click()
+      await page.locator('details.q > summary').first().click()
       await page.click('.model-opt:has-text("SaaS")')
-      await page.locator('.money-sub').evaluate((d) => ((d as HTMLDetailsElement).open = true))
       await page.fill('#mf-churn_pct', '500') // trạng thái lỗi cũng phải đạt
-      await scan(page, 'chi tiết ý tưởng')
+      await scan(page, 'trang ý tưởng')
+      await page.locator('summary[aria-label="Thêm tuỳ chọn"]').click()
+      await scan(page, 'menu ⋯')
+      await page.keyboard.press('Escape')
 
       await page.goto(`/#/idea/${id}/coach`)
       await page.waitForSelector('.coach-prompt')
       await scan(page, 'mài ý tưởng')
 
-      for (const [hash, sel, name] of [['#/review', '.review', 'ôn lại'], ['#/stats', '.stats', 'thống kê'], ['#/settings', '.settings', 'cài đặt']] as const) {
+      for (const [hash, sel, name] of [['#/settings', '.settings', 'cài đặt']] as const) {
         await page.goto('/' + hash)
         await page.waitForSelector(sel)
         await scan(page, name)

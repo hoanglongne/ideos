@@ -1,11 +1,11 @@
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 
-/** Ghi một ý tưởng bằng phím tắt N. */
+/** Ghi một ý tưởng bằng phím tắt N và ô ghi ngay trên trang chủ. */
 export async function capture(page: Page, text: string) {
   await page.keyboard.press('n')
   await page.fill('.capture-input', text)
   await page.keyboard.press('Control+Enter')
-  await expect(page.locator('.sheet')).toBeHidden()
+  await expect(page.locator('.capture-input')).toHaveValue('')
 }
 
 /** Bật đồng bộ trên máy này, trả về mã đồng bộ. */
@@ -40,15 +40,15 @@ export async function phoneContext(browser: Browser): Promise<BrowserContext> {
   return browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
 }
 
-/** Ghi một ý tưởng rồi mở trang chi tiết của nó. Trả về id. */
+/** Ghi một ý tưởng rồi mở trang của nó. Trả về id. */
 export async function newIdea(page: Page, text: string): Promise<string> {
-  await page.goto('/#/ideas')
+  await page.goto('/#/')
   await capture(page, text)
-  await page.locator('.ideas .row').first().click()
+  const title = text.split('\n')[0].replace(/[#@]\S+/g, '').trim()
+  await page.locator('.item', { hasText: title }).first().click()
   await page.waitForSelector('.idea')
   return page.url().split('/idea/')[1]
 }
-
 
 /** Mở hoặc đóng một mục của trang ý tưởng. */
 export async function setFold(page: Page, id: string, open: boolean) {

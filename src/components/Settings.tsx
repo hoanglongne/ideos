@@ -127,7 +127,7 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
           <button className="btn" onClick={() => fileRef.current?.click()}>
             Khôi phục từ file
           </button>
-          <button className="text-btn" onClick={async () => downloadBlob(await exportMarkdown(), `ideos-${stamp()}.md`)}>
+          <button className="btn" onClick={async () => downloadBlob(await exportMarkdown(), `ideos-${stamp()}.md`)}>
             Xuất Markdown
           </button>
           <input
@@ -195,19 +195,7 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
             <option value="en-US">English</option>
           </select>
         </label>
-        <label className="set-item">
-          <span>
-            <span className="item-title">Đưa vào hàng ôn lại sau</span>
-            <span className="item-desc">Ý tưởng chưa xem lại sau khoảng này sẽ được nhắc.</span>
-          </span>
-          <select value={st.reviewAfterDays} onChange={(e) => setSettings({ reviewAfterDays: +e.target.value })}>
-            {[1, 3, 7, 14, 30].map((d) => (
-              <option key={d} value={d}>
-                {d} ngày
-              </option>
-            ))}
-          </select>
-        </label>
+        
       </Row>
 
       {!standalone && (
@@ -230,23 +218,7 @@ export function Settings({ installEvent, onInstalled }: { installEvent: InstallP
         </Row>
       )}
 
-      <Row id="help-h" title="Ghi nhanh" desc="Những cách để ghi xong một ý tưởng trong vài giây.">
-        <ul className="help">
-          <li>Dòng đầu là tiêu đề, các dòng sau là ghi chú.</li>
-          <li>
-            <code>#tag</code> gắn nhãn, ví dụ <code>#ai #giaoduc</code>.
-          </li>
-          <li>
-            <code>@web</code> <code>@app</code> <code>@startup</code> <code>@product</code> <code>@feature</code> chọn loại.
-          </li>
-          <li>
-            <kbd>N</kbd> ghi mới, <kbd>/</kbd> tìm, <kbd>Ctrl</kbd> + <kbd>Enter</kbd> lưu, <kbd>Esc</kbd> đóng.
-          </li>
-          <li>Tìm không cần gõ dấu: "y tuong" vẫn ra "ý tưởng".</li>
-          <li>Trên Android: chia sẻ link hoặc đoạn chữ từ app khác vào Ideos để lưu thành ý tưởng.</li>
-          <li>Ghi âm dùng được khi offline. Nói thành chữ thường cần mạng.</li>
-        </ul>
-      </Row>
+      
 
       <Row id="danger-h" title="Xoá dữ liệu" desc={signedIn ? 'Xoá toàn bộ ý tưởng trên máy này và trên mọi máy đang đồng bộ.' : 'Xoá toàn bộ ý tưởng trên máy này.'}>
         <p className="panel-note">Không thể hoàn tác, trừ khi bạn đã tải bản sao lưu.</p>

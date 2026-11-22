@@ -2,30 +2,15 @@ import { expect, test } from '@playwright/test'
 import { capture, newIdea, phoneContext } from './helpers'
 
 test.describe('điện thoại', () => {
-  test('thẻ bước tiếp theo nằm ngay màn đầu, các phần đóng sẵn, mở hay đóng được nhớ theo từng ý tưởng', async ({ browser }) => {
+  test('việc "Bây giờ" và nút chính nằm ngay màn đầu, các phần phụ đóng sẵn', async ({ browser }) => {
     const ctx = await phoneContext(browser)
     const page = await ctx.newPage()
     await page.goto('/')
     await newIdea(page, 'Ý tưởng thứ nhất')
-    const open = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('details.part')].map((d) => [d.id.replace('sec-', ''), (d as HTMLDetailsElement).open])))
-    expect(Object.values(await open()).every((v) => v === false)).toBe(true)
-
     // không cần cuộn: thẻ và nút chính đã nằm trong màn hình đầu
-    const card = await page.locator('.next-card .btn.primary').boundingBox()
-    expect(card!.y + card!.height).toBeLessThan(844)
-
-    await page.locator('#sec-evidence > summary').click()
-    expect((await open()).evidence).toBe(true)
-    await page.reload()
-    await page.waitForSelector('.idea')
-    expect((await open()).evidence).toBe(true)
-
-    // ý tưởng khác không bị ảnh hưởng
-    await capture(page, 'Ý tưởng thứ hai')
-    await page.goto('/#/ideas')
-    await page.locator('.ideas .row', { hasText: 'Ý tưởng thứ hai' }).click()
-    await page.waitForSelector('.idea')
-    expect((await open()).evidence).toBe(false)
+    const btn = await page.locator('.now .btn.primary').boundingBox()
+    expect(btn!.y + btn!.height).toBeLessThan(844)
+    for (const id of ['money', 'journal']) expect(await page.evaluate((i) => (document.getElementById('sec-' + i) as HTMLDetailsElement).open, id)).toBe(false)
     await ctx.close()
   })
 
@@ -35,7 +20,7 @@ test.describe('điện thoại', () => {
     await page.goto('/')
     await newIdea(page, 'Ý tưởng để đo vùng chạm #a')
     await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 }) // thông báo tạm thời che nút ở cuối trang
-    await page.evaluate(() => document.querySelectorAll('details.part').forEach((d) => ((d as HTMLDetailsElement).open = true)))
+    await page.evaluate(() => document.querySelectorAll('details.sec-fold, details.q').forEach((d) => ((d as HTMLDetailsElement).open = true)))
     const measure = (scope = 'body') =>
       page.evaluate((scope) => {
         const bad: string[] = []
@@ -68,9 +53,9 @@ test.describe('điện thoại', () => {
     await page.locator('summary[aria-label="Thêm tuỳ chọn"]').click()
     await expect(page.locator('details.menu')).toHaveJSProperty('open', true)
     expect(await measure('.menu-pop'), 'menu ⋯').toEqual([])
-    for (const [hash, name] of [['/#/', 'hôm nay'], ['/#/ideas', 'danh sách']] as const) {
+    for (const [hash, name, sel] of [['/#/', 'trang chủ', '.home'], ['/#/settings', 'cài đặt', '.settings']] as const) {
       await page.goto(hash)
-      await page.waitForSelector('.today, .ideas')
+      await page.waitForSelector(sel)
       expect(await measure(), name).toEqual([])
     }
     await ctx.close()

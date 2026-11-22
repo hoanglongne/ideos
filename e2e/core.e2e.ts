@@ -7,25 +7,27 @@ test('ghi ý tưởng, tìm không dấu, và dùng được khi mất mạng', 
 
   await capture(page, 'App tìm bạn chạy bộ quanh hồ Tây #fitness @app')
   await capture(page, 'Web so sánh giá vé xe khách #travel @web')
-  await page.goto('/#/ideas')
-  await expect(page.locator('.ideas .row')).toHaveCount(2)
+  await expect(page.locator('.item')).toHaveCount(2)
 
-  await page.fill('.search', 'ban chay')
-  await expect(page.locator('.ideas .row')).toHaveCount(1)
-  await page.fill('.search', '')
+  // từ 7 ý tưởng trở lên mới hiện ô tìm; tìm không cần dấu
+  for (const t of ['Một', 'Hai', 'Ba', 'Bốn', 'Năm']) await capture(page, 'Ý tưởng số ' + t)
+  await expect(page.locator('.item')).toHaveCount(7)
+  await page.fill('.home-search input', 'ban chay')
+  await expect(page.locator('.item')).toHaveCount(1)
+  await page.fill('.home-search input', '')
 
   // Chờ service worker lưu xong bản app, rồi rút mạng
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined))
   await page.waitForFunction(async () => (await caches.keys()).length > 0)
   await context.setOffline(true)
   await page.reload()
-  await expect(page.locator('.ideas .row')).toHaveCount(2)
+  await expect(page.locator('.item')).toHaveCount(7)
   await capture(page, 'Ý tưởng ghi lúc offline #offline')
-  await expect(page.locator('.ideas .row')).toHaveCount(3)
+  await expect(page.locator('.item')).toHaveCount(8)
 
   // Màn tải theo yêu cầu (chunk) vẫn mở được khi offline
-  await page.goto('/#/stats')
-  await expect(page.locator('.stats')).toBeVisible()
+  await page.goto('/#/settings')
+  await expect(page.locator('.settings')).toBeVisible()
   await context.setOffline(false)
 })
 

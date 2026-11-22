@@ -5,7 +5,6 @@ import { enableSync, newIdea, setFold } from './helpers'
 
 test('chưa bật đồng bộ thì AI báo cần đồng bộ, và Mài ý tưởng không hỏi tiếp', async ({ page }) => {
   const id = await newIdea(page, 'App ghép cặp người chạy bộ')
-  await setFold(page, 'assumptions', true)
   await expect(page.locator('.ai-panel')).toContainText('bật đồng bộ')
   await page.goto(`/#/idea/${id}/coach`)
   await page.waitForSelector('.coach-prompt')
@@ -19,13 +18,12 @@ test('AI phản biện: thêm giả định bằng một chạm, ghi vào nhật
   await enableSync(page)
   await page.goto(`/#/idea/${id}`)
   await page.waitForSelector('.idea')
-  await setFold(page, 'assumptions', true)
   await expect(page.locator('.ai-panel')).toContainText('còn 30 lượt')
   await page.click('button:has-text("Phản biện ý tưởng này")')
   await expect(page.locator('.ai-result')).toBeVisible()
   await expect(page.locator('.ai-panel')).toContainText('còn 29 lượt')
   await page.locator('.ai-assumptions button:has-text("Thêm")').first().click()
-  await expect(page.locator('.assumption')).toHaveCount(1)
+  await expect(page.locator('.q')).toHaveCount(1)
   await setFold(page, 'journal', true)
   await expect(page.locator('.tl-entry.kind-ai')).toContainText('Điểm yếu')
 })
@@ -74,7 +72,6 @@ test('tắt AI trong Cài đặt: không còn yêu cầu nào tới máy chủ A
   await page.reload()
   await page.goto(`/#/idea/${id}`)
   await page.waitForSelector('.idea')
-  await setFold(page, 'assumptions', true)
   await expect(page.locator('.ai-panel')).toContainText('AI đang tắt')
   await expect(page.locator('button:has-text("Phản biện ý tưởng này")')).toHaveCount(0)
 
@@ -90,6 +87,5 @@ test('tắt AI trong Cài đặt: không còn yêu cầu nào tới máy chủ A
   await page.getByRole('switch', { name: 'Dùng AI' }).check()
   await page.goto(`/#/idea/${id}`)
   await page.waitForSelector('.idea')
-  await setFold(page, 'assumptions', true)
   await expect(page.locator('.ai-panel')).toContainText('còn')
 })
